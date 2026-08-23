@@ -70,6 +70,14 @@ def bioactivity_observed_frame(df: pd.DataFrame) -> pd.DataFrame:
     return df.loc[coverage].reset_index(drop=True).copy()
 
 
+def without_pubchem_fallback_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Exclude chemicals whose molecular representation came from PubChem fallback."""
+    if "structure_source" not in df.columns:
+        raise KeyError("The structured benchmark does not contain structure_source.")
+    keep = df["structure_source"].fillna("").astype(str).str.casefold().ne("pubchem")
+    return df.loc[keep].reset_index(drop=True).copy()
+
+
 def build_profiles(data: pd.DataFrame) -> dict[str, pd.DataFrame]:
     """Define leakage and field-ablation checks using the same random split protocol."""
     schema = DEFAULT_SCHEMA
@@ -89,7 +97,11 @@ def build_profiles(data: pd.DataFrame) -> dict[str, pd.DataFrame]:
             data,
             [column for column in data.columns if column.startswith("mech_")],
         ),
+        # Dropping the linked field lets the shared feature builder recompute
+        # MolLogP from each parseable structure before fitting.
+        "with_rdkit_logp_recomputed": drop_columns(data, ["physchem_logp"]),
         "bioactivity_proxy_observed_cases": bioactivity_observed_frame(data),
+        "without_pubchem_fallback": without_pubchem_fallback_frame(data),
         "without_all_record_context": drop_columns(data, record_context),
     }
     field_labels = {

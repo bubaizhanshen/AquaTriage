@@ -7,7 +7,13 @@ from scipy import sparse
 from ecoood.ad import ApplicabilityDomainScorer
 from ecoood.features import FeatureBundle
 from ecoood.conformal import decision_labels
-from ecoood.ood import CalibrationRiskScorer, EcoOODScorer, _taxonomy_novelty
+from ecoood.ood import (
+    CalibrationRiskScorer,
+    EcoOODScorer,
+    _mean_tanimoto_knn_distance,
+    _taxonomy_novelty,
+    calibration_meta_bootstrap,
+)
 from ecoood.schema import DEFAULT_SCHEMA
 
 
@@ -28,6 +34,8 @@ def _bundle(n_rows: int) -> FeatureBundle:
 def _frame(n_rows: int) -> pd.DataFrame:
     return pd.DataFrame(
         {
+            "chemical_id": [f"chem_{index}" for index in range(n_rows)],
+            "endpoint": ["fish_96h_lc50"] * n_rows,
             "phylum": ["Chordata"] * n_rows,
             "class_name": ["Actinopterygii"] * n_rows,
             "order": ["Cypriniformes"] * n_rows,
@@ -101,10 +109,11 @@ def test_displayed_axes_use_calibration_scaled_subcomponents() -> None:
         {
             "d_chem_knn": [0.0, 2.0],
             "d_chem_mahal": [0.0, 4.0],
-            "d_species_knn": [0.0, 6.0],
             "d_species_tax": [0.0, 1.0],
             "d_context": [0.0, 8.0],
+            "context_missing_fraction": [0.0, 1.0],
             "d_mech": [0.0, 10.0],
+            "bioactivity_missing_fraction": [0.0, 1.0],
             "u_model": [0.0, 12.0],
         }
     )
@@ -116,6 +125,30 @@ def test_displayed_axes_use_calibration_scaled_subcomponents() -> None:
     assert np.allclose(axes.iloc[1], 1.0)
 
 
+def test_tanimoto_knn_uses_distinct_chemical_references() -> None:
+    train = sparse.csr_matrix(
+        np.array(
+            [
+                [1, 1, 0, 0],
+                [1, 1, 0, 0],
+                [1, 0, 1, 0],
+                [0, 0, 1, 1],
+            ],
+            dtype=np.float32,
+        )
+    )
+    query = sparse.csr_matrix(np.array([[1, 1, 0, 0]], dtype=np.float32))
+    distance = _mean_tanimoto_knn_distance(
+        train,
+        query,
+        np.array(["A", "A", "B", "C"]),
+        n_neighbors=2,
+    )
+
+    # A contributes one exact match; B contributes the next nearest chemical.
+    assert np.allclose(distance, [(0.0 + 2.0 / 3.0) / 2.0])
+
+
 def test_equal_block_distance_is_available() -> None:
     train = _bundle(4)
     query = _bundle(2)
@@ -125,3 +158,38 @@ def test_equal_block_distance_is_available() -> None:
 
     assert scores.equal_block_distance.shape == (2,)
     assert np.isfinite(scores.equal_block_distance).all()
+
+
+def test_distinct_chemical_knn_limits_each_training_chemical_to_one_neighbor() -> None:
+    train = _bundle(6)
+    query = _bundle(1)
+    chemical_ids = np.array(["A", "A", "A", "B", "C", "D"])
+    scorer = ApplicabilityDomainScorer().fit(train, chemical_ids=chemical_ids)
+
+    scores = scorer.predict(query, model_std=np.zeros(1))
+
+    assert scores.equal_block_distance_distinct_chemical.shape == (1,)
+    assert scores.equal_block_distance_distinct_chemical[0] >= scores.equal_block_distance[0]
+
+
+def test_calibration_meta_bootstrap_resamples_complete_chemical_clusters() -> None:
+    components = pd.DataFrame(
+        {
+            "d_chem_knn": np.linspace(0, 1, 12),
+            "u_model": np.linspace(1, 0, 12),
+        }
+    )
+    residuals = np.linspace(0.01, 1.2, 12)
+    chemical_ids = np.repeat(["A", "B", "C", "D"], 3)
+
+    result = calibration_meta_bootstrap(
+        components,
+        residuals,
+        chemical_ids,
+        n_replicates=5,
+        seed=123,
+    )
+
+    assert len(result) == 5
+    assert {"sampled_positive_n", "score_spearman", "converged"}.issubset(result)
+    assert result["sampled_case_n"].mod(3).eq(0).all()

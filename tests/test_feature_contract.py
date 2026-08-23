@@ -46,12 +46,31 @@ def test_target_derived_columns_never_enter_predictor_matrix() -> None:
     assert DEFAULT_SCHEMA.source not in builder.categorical_cols
     assert "toxicity_value" not in builder.numeric_cols
     assert "chemical_class" not in builder.categorical_cols
-    assert set(builder.descriptor_cols) == {"physchem_logp"}
+    assert "trophic_group" not in builder.categorical_cols
+    assert set(builder.descriptor_cols) == {
+        "physchem_mol_wt",
+        "physchem_logp",
+        "physchem_tpsa",
+        "physchem_hba",
+        "physchem_hbd",
+        "physchem_rot_bonds",
+        "physchem_ring_count",
+    }
 
     names = builder.tabular_feature_names()
     assert not any("target_log_molar" in name for name in names)
     assert not any("molar_concentration" in name for name in names)
     assert not any("toxicity_value" in name for name in names)
+
+
+def test_bioactivity_coverage_count_is_audit_only() -> None:
+    frame = _feature_frame()
+    frame["mech_feature_count"] = [1.0, 0.0, 1.0]
+    builder = EcoFeatureBuilder(fingerprint_bits=64).fit(frame)
+
+    assert "mech_signal" in builder.mechanism_cols
+    assert "mech_feature_count" not in builder.mechanism_cols
+    assert not any("mech_feature_count" in name for name in builder.tabular_feature_names())
 
 
 def test_declared_species_and_context_axes_are_materialized() -> None:
@@ -63,7 +82,6 @@ def test_declared_species_and_context_axes_are_materialized() -> None:
         "duration_h",
         "temperature_c",
         "ph",
-        "study_year",
         "ctx_hardness",
     }
     assert bundle.species.shape[1] > 0
@@ -73,3 +91,20 @@ def test_declared_species_and_context_axes_are_materialized() -> None:
     assert np.isfinite(bundle.species.data).all()
     assert np.isfinite(bundle.context).all()
     assert np.isfinite(bundle.mechanism).all()
+
+
+def test_study_year_can_be_enabled_for_historical_sensitivity() -> None:
+    builder = EcoFeatureBuilder(fingerprint_bits=64, include_study_year=True)
+    builder.fit(_feature_frame())
+
+    assert "study_year" in builder.context_cols
+
+
+def test_rdkit_logp_replaces_sparse_linked_values() -> None:
+    frame = _feature_frame()
+    frame.loc[1:, "physchem_logp"] = np.nan
+    builder = EcoFeatureBuilder(fingerprint_bits=64)
+    bundle = builder.fit_transform(frame)
+
+    assert np.isfinite(bundle.descriptor).all()
+    assert np.unique(bundle.descriptor[:, builder.descriptor_cols.index("physchem_logp")]).size > 1

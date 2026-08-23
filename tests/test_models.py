@@ -12,8 +12,14 @@ def test_lightgbm_row_subsampling_is_enabled_when_available() -> None:
     estimator = make_estimator("lightgbm", seed=123)
     if estimator.__class__.__name__ == "LGBMRegressor":
         params = estimator.get_params()
+        assert params["objective"] == "regression"
         assert params["subsample"] == 0.9
         assert params["subsample_freq"] == 1
+
+
+def test_random_forest_uses_explicit_squared_error_criterion() -> None:
+    estimator = make_estimator("random_forest", seed=123)
+    assert estimator.get_params()["criterion"] == "squared_error"
 
 
 def test_mlp_ensemble_handles_sparse_inputs() -> None:

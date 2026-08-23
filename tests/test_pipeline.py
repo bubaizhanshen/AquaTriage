@@ -24,6 +24,23 @@ def test_benchmark_smoke(tmp_path: Path) -> None:
     assert not summary.empty
     assert {"split", "model", "rmse", "mae", "coverage", "aurc"}.issubset(summary.columns)
     assert (tmp_path / "results" / "ood_score_summary.csv").exists()
+    predictions = pd.read_csv(
+        tmp_path / "results" / "random" / "random_forest" / "predictions.csv"
+    )
+    expected_component_ablations = {
+        f"ecoood_minus_component_{component}"
+        for component in (
+            "d_chem_knn",
+            "d_chem_mahal",
+            "d_species_tax",
+            "d_context",
+            "context_missing_fraction",
+            "d_mech",
+            "bioactivity_missing_fraction",
+            "u_model",
+        )
+    }
+    assert expected_component_ablations.issubset(predictions.columns)
 
 
 def test_held_out_domain_labels_follow_the_split_definition() -> None:

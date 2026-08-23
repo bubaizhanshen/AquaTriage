@@ -18,19 +18,24 @@ DEPLOYMENT_SPLITS = [
 DECISION_MAP_SPLITS = ["temporal", "species", "chemical_class"]
 MODELS = ["lightgbm", "random_forest", "xgboost"]
 METHOD_COLUMNS = {
-    "EcoOOD": "max_ecoood",
+    "Prediction-error risk score": "max_ecoood",
     "Ensemble SD risk": "max_ensemble_sd_risk",
     "Input-space kNN + SD risk": "max_input_space_knn_plus_sd_risk",
     "Block-normalized kNN + SD risk": "max_equal_block_knn_plus_sd_risk",
     "Generic support + SD risk": "max_generic_support_plus_sd_risk",
     "Input-space kNN distance": "max_input_distance",
     "Block-normalized kNN distance": "max_equal_block_distance",
+    "Distinct-chemical block-normalized kNN distance": (
+        "max_equal_block_distance_distinct_chemical"
+    ),
     "Similarity AD": "max_similarity_risk",
-    "EcoOOD endpoint-balanced": "max_ecoood_endpoint_balanced",
-    "EcoOOD q80": "max_ecoood_q80",
-    "EcoOOD q95": "max_ecoood_q95",
+    "Prediction-error risk score, endpoint-balanced": "max_ecoood_endpoint_balanced",
+    "Prediction-error risk score, top 20%": "max_ecoood_q80",
+    "Prediction-error risk score, top 5%": "max_ecoood_q95",
 }
 ACTION_ORDER = ["screen_now", "lower_priority", "withhold_review", "prioritize_testing"]
+DEFAULT_TRIAGE_COLUMN = "ad_equal_block_distance"
+DEFAULT_TRIAGE_AGGREGATE = "max_equal_block_distance"
 CLASS_ORDER = [
     "Conazoles",
     "Per- and Polyfluoroalkyl Substances (PFAS)",
@@ -64,7 +69,8 @@ def _group_summary(frame: pd.DataFrame, group_cols: list[str], value_cols: list[
 
 def _run_dir(root: Path, seed: int, split: str) -> Path:
     del split
-    return root / f"seed_{seed}" / "structured"
+    structured = root / f"seed_{seed}" / "structured"
+    return structured if structured.exists() else root / f"seed_{seed}"
 
 
 def load_core_outputs(
@@ -76,7 +82,7 @@ def load_core_outputs(
     score_frames: list[pd.DataFrame] = []
     prediction_frames: list[pd.DataFrame] = []
     for seed in seeds:
-        run_dir = root / f"seed_{seed}" / "structured"
+        run_dir = _run_dir(root, seed, "")
         metrics = pd.read_csv(run_dir / "benchmark_summary.csv")
         metrics = metrics[metrics["model"].isin(models)].copy()
         metrics["seed"] = seed
@@ -111,6 +117,9 @@ PREDICTION_SCORE_COLUMNS = {
     "generic_support_plus_sd_risk": "max_generic_support_plus_sd_risk",
     "ad_distance_to_model": "max_input_distance",
     "ad_equal_block_distance": "max_equal_block_distance",
+    "ad_equal_block_distance_distinct_chemical": (
+        "max_equal_block_distance_distinct_chemical"
+    ),
     "ad_similarity": "max_similarity_risk",
     "ecoood_endpoint_balanced": "max_ecoood_endpoint_balanced",
     "ecoood_q80": "max_ecoood_q80",
@@ -364,12 +373,12 @@ def summarize_direct_rule(chemical_panel: pd.DataFrame) -> tuple[pd.DataFrame, p
     for (seed, model, split), group in chemical_panel.groupby(["seed", "model", "split"], sort=False):
         frame = group.copy()
         toxicity_cutoff = float(frame["min_true_tox"].quantile(0.25))
-        score_cutoff = float(frame["max_ecoood"].quantile(0.75))
+        score_cutoff = float(frame[DEFAULT_TRIAGE_AGGREGATE].quantile(0.75))
         frame["toxicity_cutoff"] = toxicity_cutoff
         frame["score_cutoff"] = score_cutoff
         frame["true_high_concern"] = frame["min_true_tox"] <= toxicity_cutoff
         frame["pred_high_concern"] = frame["min_pred_tox"] <= toxicity_cutoff
-        frame["reviewed"] = frame["max_ecoood"] >= score_cutoff
+        frame["reviewed"] = frame[DEFAULT_TRIAGE_AGGREGATE] >= score_cutoff
         frame["baseline_action"] = np.where(frame["pred_high_concern"], "screen_now", "lower_priority")
         frame["screening_action"] = _assign_actions(frame, frame["reviewed"])
         frame["baseline_false_negative"] = frame["true_high_concern"] & ~frame["pred_high_concern"]
@@ -400,7 +409,7 @@ def summarize_direct_rule(chemical_panel: pd.DataFrame) -> tuple[pd.DataFrame, p
             "split": split,
             "n_chemical_split_cases": int(len(frame)),
             "toxicity_cutoff": toxicity_cutoff,
-            "ecoood_cutoff": score_cutoff,
+            "reliability_cutoff": score_cutoff,
             "baseline_false_omission_rate": baseline_false_omission_rate,
             "routed_false_omission_rate": routed_false_omission_rate,
             "baseline_false_reassurance": baseline_false_omission_rate,
@@ -624,16 +633,16 @@ def build_class_focused_panel(predictions: pd.DataFrame) -> tuple[pd.DataFrame, 
             endpoint_breadth=("endpoint", "nunique"),
             min_pred_tox=("y_pred", "min"),
             min_true_tox=("y_true", "min"),
-            max_ecoood=("ecoood_score", "max"),
-            median_ecoood=("ecoood_score", "median"),
+            max_reliability=(DEFAULT_TRIAGE_COLUMN, "max"),
+            median_reliability=(DEFAULT_TRIAGE_COLUMN, "median"),
         )
     )
     toxicity_cutoff = float(panel["min_pred_tox"].quantile(0.25))
-    score_cutoff = float(panel["max_ecoood"].quantile(0.75))
+    score_cutoff = float(panel["max_reliability"].quantile(0.75))
     panel["toxicity_cutoff"] = toxicity_cutoff
-    panel["ecoood_cutoff"] = score_cutoff
+    panel["reliability_cutoff"] = score_cutoff
     panel["pred_high_concern"] = panel["min_pred_tox"] <= toxicity_cutoff
-    panel["reviewed"] = panel["max_ecoood"] >= score_cutoff
+    panel["reviewed"] = panel["max_reliability"] >= score_cutoff
     panel["screening_action"] = _assign_actions(panel, panel["reviewed"])
     counts = (
         panel.groupby(["primary_class", "screening_action"], as_index=False)
@@ -648,9 +657,9 @@ def build_decision_map_summary(predictions: pd.DataFrame) -> tuple[pd.DataFrame,
         predictions["model"].eq("lightgbm") & predictions["split"].isin(DECISION_MAP_SPLITS)
     ].copy()
     toxicity_cutoff = float(frame["y_pred"].quantile(0.25))
-    score_cutoff = float(frame["ecoood_score"].quantile(0.75))
+    score_cutoff = float(frame[DEFAULT_TRIAGE_COLUMN].quantile(0.75))
     frame["pred_high_concern"] = frame["y_pred"] <= toxicity_cutoff
-    frame["reviewed"] = frame["ecoood_score"] >= score_cutoff
+    frame["reviewed"] = frame[DEFAULT_TRIAGE_COLUMN] >= score_cutoff
     frame["screening_action"] = _assign_actions(frame, frame["reviewed"])
     frame["abs_error"] = (frame["y_true"] - frame["y_pred"]).abs()
     severe_cutoff = float(frame["abs_error"].quantile(0.90))
@@ -670,25 +679,25 @@ def build_decision_map_summary(predictions: pd.DataFrame) -> tuple[pd.DataFrame,
         )
     )
     summary["toxicity_cutoff"] = toxicity_cutoff
-    summary["ecoood_cutoff"] = score_cutoff
+    summary["reliability_cutoff"] = score_cutoff
     return frame, summary
 
 
 def build_threshold_sensitivity(decision_rows: pd.DataFrame) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     for toxicity_q in [0.20, 0.25, 0.30]:
-        for ecoood_q in [0.70, 0.75, 0.80]:
+        for reliability_q in [0.70, 0.75, 0.80]:
             frame = decision_rows.copy()
             toxicity_cutoff = float(frame["y_pred"].quantile(toxicity_q))
-            score_cutoff = float(frame["ecoood_score"].quantile(ecoood_q))
+            score_cutoff = float(frame[DEFAULT_TRIAGE_COLUMN].quantile(reliability_q))
             frame["pred_high_concern"] = frame["y_pred"] <= toxicity_cutoff
-            frame["reviewed"] = frame["ecoood_score"] >= score_cutoff
+            frame["reviewed"] = frame[DEFAULT_TRIAGE_COLUMN] >= score_cutoff
             frame["action_tmp"] = _assign_actions(frame, frame["reviewed"])
             row: dict[str, object] = {
                 "toxicity_quantile": toxicity_q,
-                "ecoood_quantile": ecoood_q,
+                "reliability_quantile": reliability_q,
                 "toxicity_cutoff": toxicity_cutoff,
-                "ecoood_cutoff": score_cutoff,
+                "reliability_cutoff": score_cutoff,
             }
             for action in ACTION_ORDER:
                 row[f"{action}_fraction"] = float(frame["action_tmp"].eq(action).mean())

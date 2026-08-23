@@ -14,3 +14,14 @@ models:
   - xgboost
 deterministic_rejection_policy: withhold_review
 feature_policy: exclude_target_identifier_source_and_class_fields
+publication_year_policy: split_and_audit_only
+logp_policy: recompute_rdkit_mollogp
+bioactivity_coverage_count_policy: audit_only
+distinct_chemical_knn_sensitivity: true
+acyclic_scaffold_identity_sensitivity: true
+reliability_component_mode: revised
+reliability_fingerprint_metric: tanimoto
+reliability_neighbors: 5
+reliability_context_metric: endpoint_restricted_missing_aware_gower
+reliability_bioactivity_metric: missing_aware_standardized_euclidean
+default_unlabeled_triage: block_normalized_knn

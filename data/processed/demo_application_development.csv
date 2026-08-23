@@ -1,0 +1,9 @@
+chemical_id,pred_high_concern,true_high_concern,y_true,y_pred,input_eligible,ad_equal_block_distance_distinct_chemical,ad_equal_block_distance,equal_block_knn_plus_sd_risk,prediction_error_risk_score,direction_aligned_risk_score,ensemble_sd_risk,ad_similarity
+D1,false,true,-6.0,-3.0,true,0.97,0.95,0.88,0.72,0.91,0.10,0.82
+D2,false,true,-5.5,-3.2,true,0.92,0.90,0.84,0.68,0.87,0.20,0.75
+D3,false,false,-3.0,-2.8,true,0.12,0.10,0.18,0.35,0.22,0.95,0.12
+D4,true,true,-5.0,-4.8,true,0.21,0.20,0.25,0.40,0.31,0.90,0.20
+D5,false,false,-2.0,-2.1,true,0.17,0.15,0.20,0.30,0.27,0.30,0.15
+D6,true,true,-4.8,-4.7,true,0.27,0.25,0.30,0.45,0.36,0.40,0.25
+D7,false,false,-2.5,-2.4,true,0.07,0.05,0.12,0.25,0.18,0.80,0.08
+D8,true,false,-3.5,-4.2,true,0.33,0.30,0.36,0.50,0.42,0.70,0.32

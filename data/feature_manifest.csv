@@ -1,72 +1,77 @@
 field,raw_dtype,n_unique,missing_fraction,feature_block,source_or_derivation,predictive_input
-chemical_id,object,841,0.0,"identifier, target, or audit-only field",ECOTOX record metadata,False
-chemical_name,object,841,0.0,"identifier, target, or audit-only field",ECOTOX record metadata,False
-casrn,int64,841,0.0,"identifier, target, or audit-only field",ECOTOX record metadata,False
-dtxsid,object,838,0.003237555645487657,"identifier, target, or audit-only field",DSSTox/CompTox structure linkage,False
-smiles,object,837,0.0,chemical fingerprint,DSSTox/CompTox structure linkage,True
-inchikey,object,829,0.006070416835289356,"identifier, target, or audit-only field",DSSTox/CompTox structure linkage,False
+chemical_id,object,801,0.0,"identifier, target, or audit-only field",ECOTOX record metadata,False
+chemical_name,object,801,0.0,"identifier, target, or audit-only field",ECOTOX record metadata,False
+casrn,int64,801,0.0,"identifier, target, or audit-only field",ECOTOX record metadata,False
+dtxsid,object,798,0.003469963131641726,"identifier, target, or audit-only field",DSSTox/CompTox structure linkage,False
+smiles,object,798,0.0,chemical fingerprint,DSSTox/CompTox structure linkage,True
+inchikey,object,790,0.006506180871828237,"identifier, target, or audit-only field",DSSTox/CompTox structure linkage,False
 endpoint,object,3,0.0,experimental context,ECOTOX study/taxon context curation,True
 endpoint_code,object,2,0.0,"identifier, target, or audit-only field",ECOTOX value/end-point curation,False
 effect,object,9,0.0,"identifier, target, or audit-only field",ECOTOX value/end-point curation,False
-measurement,object,31,0.0,"identifier, target, or audit-only field",ECOTOX value/end-point curation,False
-species,object,196,0.0,species/taxonomy,ECOTOX study/taxon context curation,True
-common_name,object,122,0.0,"identifier, target, or audit-only field",ECOTOX record metadata,False
-phylum,object,8,0.0004046944556859571,species/taxonomy,ECOTOX study/taxon context curation,True
-class_name,object,12,0.0012140833670578712,species/taxonomy,ECOTOX study/taxon context curation,True
-order,object,31,0.0012140833670578712,species/taxonomy,ECOTOX study/taxon context curation,True
-family,object,64,0.0012140833670578712,species/taxonomy,ECOTOX study/taxon context curation,True
-genus,object,118,0.00141643059490085,species/taxonomy,ECOTOX study/taxon context curation,True
+measurement,object,30,0.0,"identifier, target, or audit-only field",ECOTOX value/end-point curation,False
+species,object,174,0.0,species/taxonomy,ECOTOX study/taxon context curation,True
+common_name,object,103,0.0,"identifier, target, or audit-only field",ECOTOX record metadata,False
+phylum,object,8,0.00043374539145521576,species/taxonomy,ECOTOX study/taxon context curation,True
+class_name,object,12,0.0013012361743656475,species/taxonomy,ECOTOX study/taxon context curation,True
+order,object,30,0.0013012361743656475,species/taxonomy,ECOTOX study/taxon context curation,True
+family,object,56,0.0013012361743656475,species/taxonomy,ECOTOX study/taxon context curation,True
+genus,object,105,0.0015181088700932553,species/taxonomy,ECOTOX study/taxon context curation,True
 species_group,object,9,0.0,"identifier, target, or audit-only field",ECOTOX study/taxon context curation,False
 duration_h,float64,11,0.0,experimental context,ECOTOX study/taxon context curation,True
 medium,object,3,0.0,experimental context,ECOTOX study/taxon context curation,True
-temperature_c,float64,118,0.5339943342776204,experimental context,ECOTOX study/taxon context curation,True
-ph,float64,129,0.7869283690813436,experimental context,ECOTOX study/taxon context curation,True
-ctx_hardness,float64,164,0.8690813435855929,experimental context,ECOTOX study/taxon context curation,True
-study_year,int64,54,0.0,experimental context,ECOTOX study/taxon context curation,True
-doi,object,387,0.6058276001618778,"identifier, target, or audit-only field",ECOTOX record metadata,False
+temperature_c,float64,105,0.5617002819345045,experimental context,ECOTOX study/taxon context curation,True
+ph,float64,107,0.8074170461938842,experimental context,ECOTOX study/taxon context curation,True
+ctx_hardness,float64,140,0.8828887443070917,experimental context,ECOTOX study/taxon context curation,True
+study_year,int64,53,0.0,"identifier, target, or audit-only field",ECOTOX study/taxon context curation,False
+doi,object,349,0.623942745608328,"identifier, target, or audit-only field",ECOTOX record metadata,False
 source,object,1,0.0,"identifier, target, or audit-only field",ECOTOX record metadata,False
 structure_source,object,3,0.0,"identifier, target, or audit-only field",DSSTox/CompTox structure linkage,False
-chemical_class,object,34,0.0,"identifier, target, or audit-only field",curation and audit derivation,False
-toxicity_value,float64,2234,0.0,"identifier, target, or audit-only field",ECOTOX value/end-point curation,False
-toxicity_unit,object,18,0.0,"identifier, target, or audit-only field",ECOTOX value/end-point curation,False
-molar_concentration,float64,4553,0.0,"identifier, target, or audit-only field",ECOTOX value/end-point curation,False
-target_log_molar,float64,4550,0.0,"identifier, target, or audit-only field",ECOTOX value/end-point curation,False
-physchem_mol_wt,float64,739,0.0,physicochemical descriptor,DSSTox/CompTox physicochemical linkage or structure-derived value,True
-physchem_logp,float64,15,0.9878591663294213,physicochemical descriptor,DSSTox/CompTox physicochemical linkage or structure-derived value,True
-mech_cytotox_hit_rate,float64,162,0.264063132335087,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_cytotox_lower_log10_um,float64,215,0.22784297855119384,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_cytotox_lower_um,float64,215,0.22784297855119384,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_cytotox_median_log10_um,float64,215,0.22784297855119384,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_cytotox_median_um,float64,215,0.22784297855119384,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_cytotox_nhit,float64,72,0.22784297855119384,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_cytotox_ntested,float64,19,0.22784297855119384,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_feature_count,float64,20,0.21671388101983002,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_h295r_active_endpoint_count,float64,12,0.6726021853500607,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_h295r_andr_max_abs,float64,147,0.6726021853500607,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_h295r_bmd_min,float64,126,0.6726021853500607,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_h295r_cort_max_abs,float64,147,0.6726021853500607,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_h295r_cortic_max_abs,float64,141,0.6726021853500607,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_h295r_critical_val,float64,6,0.6726021853500607,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_h295r_doc_max_abs,float64,147,0.6726021853500607,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_h295r_e1_max_abs,float64,147,0.6726021853500607,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_h295r_e2_max_abs,float64,143,0.6726021853500607,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_h295r_maxmmd_max,float64,147,0.6726021853500607,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_h295r_mean_abs,float64,147,0.6726021853500607,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_h295r_mmd_max,float64,147,0.6726021853500607,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_h295r_ohpreg_max_abs,float64,139,0.6726021853500607,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_h295r_ohprog_max_abs,float64,147,0.6726021853500607,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_h295r_prog_max_abs,float64,142,0.6726021853500607,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_h295r_testo_max_abs,float64,147,0.6726021853500607,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_h295r_x11dcort_max_abs,float64,147,0.6726021853500607,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_lit_ar_agonist,float64,1,0.8761634965600972,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_lit_ar_antagonist,float64,3,0.8972076082557668,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_lit_ar_binding,float64,3,0.9182517199514366,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_lit_er_agonist,float64,5,0.5768919465803318,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_lit_er_antagonist,float64,4,0.3808174828004856,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_lit_er_binding,float64,5,0.5728450020234723,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_toxcast_ar_auc_agonist,float64,17,0.4415216511533792,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_toxcast_ar_auc_antagonist,float64,88,0.4415216511533792,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_toxcast_er_auc_agonist,float64,73,0.4425333872925941,bioactivity proxy,invitrodb/ToxCast summary linkage,True
-mech_toxcast_er_auc_antagonist,float64,62,0.4425333872925941,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+chemical_class,object,29,0.0,"identifier, target, or audit-only field",curation and audit derivation,False
+toxicity_value,float64,2088,0.0,"identifier, target, or audit-only field",ECOTOX value/end-point curation,False
+toxicity_unit,object,17,0.0,"identifier, target, or audit-only field",ECOTOX value/end-point curation,False
+molar_concentration,float64,4249,0.0,"identifier, target, or audit-only field",ECOTOX value/end-point curation,False
+target_log_molar,float64,4247,0.0,"identifier, target, or audit-only field",ECOTOX value/end-point curation,False
+physchem_mol_wt,float64,701,0.0,physicochemical descriptor,DSSTox/CompTox or PubChem physicochemical linkage,True
+physchem_logp,float64,752,0.0,physicochemical descriptor,RDKit MolLogP structure derivation,True
+mech_cytotox_hit_rate,float64,161,0.21470396877033182,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_cytotox_lower_log10_um,float64,214,0.17740186510518327,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_cytotox_lower_um,float64,214,0.17740186510518327,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_cytotox_median_log10_um,float64,214,0.17740186510518327,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_cytotox_median_um,float64,214,0.17740186510518327,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_cytotox_nhit,float64,72,0.17740186510518327,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_cytotox_ntested,float64,19,0.17740186510518327,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_feature_count,float64,20,0.16547386684016482,bioactivity coverage audit,invitrodb/ToxCast summary linkage,False
+mech_h295r_active_endpoint_count,float64,12,0.6490999783127305,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_h295r_andr_max_abs,float64,147,0.6490999783127305,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_h295r_bmd_min,float64,126,0.6490999783127305,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_h295r_cort_max_abs,float64,147,0.6490999783127305,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_h295r_cortic_max_abs,float64,141,0.6490999783127305,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_h295r_critical_val,float64,6,0.6490999783127305,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_h295r_doc_max_abs,float64,147,0.6490999783127305,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_h295r_e1_max_abs,float64,147,0.6490999783127305,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_h295r_e2_max_abs,float64,143,0.6490999783127305,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_h295r_maxmmd_max,float64,147,0.6490999783127305,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_h295r_mean_abs,float64,147,0.6490999783127305,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_h295r_mmd_max,float64,147,0.6490999783127305,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_h295r_ohpreg_max_abs,float64,139,0.6490999783127305,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_h295r_ohprog_max_abs,float64,147,0.6490999783127305,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_h295r_prog_max_abs,float64,142,0.6490999783127305,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_h295r_testo_max_abs,float64,147,0.6490999783127305,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_h295r_x11dcort_max_abs,float64,147,0.6490999783127305,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_lit_ar_agonist,float64,1,0.867273910214704,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_lit_ar_antagonist,float64,3,0.8898286705703752,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_lit_ar_binding,float64,3,0.9123834309260465,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_lit_er_agonist,float64,5,0.5465191932335719,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_lit_er_antagonist,float64,4,0.33636955107351985,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_lit_er_binding,float64,5,0.5421817393190197,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_toxcast_ar_auc_agonist,float64,17,0.4031663413576231,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_toxcast_ar_auc_antagonist,float64,88,0.4031663413576231,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_toxcast_er_auc_agonist,float64,73,0.40425070483626113,bioactivity proxy,invitrodb/ToxCast summary linkage,True
+mech_toxcast_er_auc_antagonist,float64,62,0.40425070483626113,bioactivity proxy,invitrodb/ToxCast summary linkage,True
 is_hard_ood,bool,1,0.0,"identifier, target, or audit-only field",curation and audit derivation,False
 known_ood,bool,1,0.0,"identifier, target, or audit-only field",curation and audit derivation,False
+physchem_tpsa,float64,334,0.0,physicochemical descriptor,RDKit structure derivation,True
+physchem_hba,float64,18,0.0,physicochemical descriptor,RDKit structure derivation,True
+physchem_hbd,float64,11,0.0,physicochemical descriptor,RDKit structure derivation,True
+physchem_rot_bonds,float64,26,0.0,physicochemical descriptor,RDKit structure derivation,True
+physchem_ring_count,float64,10,0.0,physicochemical descriptor,RDKit structure derivation,True

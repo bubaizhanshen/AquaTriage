@@ -24,6 +24,7 @@ def make_estimator(model_name: str, seed: int, params: dict | None = None):
         if LGBMRegressor is None:
             raise ImportError("lightgbm is not available in the active environment.")
         defaults = dict(
+            objective="regression",
             n_estimators=400,
             learning_rate=0.05,
             num_leaves=63,
@@ -73,6 +74,7 @@ def make_estimator(model_name: str, seed: int, params: dict | None = None):
     if model_name == "random_forest":
         defaults = dict(
             n_estimators=500,
+            criterion="squared_error",
             max_features="sqrt",
             min_samples_leaf=2,
             random_state=seed,

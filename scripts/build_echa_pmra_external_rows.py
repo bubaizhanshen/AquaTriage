@@ -337,21 +337,37 @@ def normalize_descriptor(text: str) -> str:
     return text.replace("other:", "").strip().upper()
 
 
-def parse_effect_value(text: str) -> tuple[float | None, str]:
-    clean = text.replace("Âµ", "µ").replace("μ", "µ")
+def parse_effect_value(text: str) -> tuple[float | None, str, bool]:
+    clean = text.replace("Âµ", "µ").replace("μ", "µ").strip()
+    is_censored = bool(re.search(r"(?:<=|>=|<|>|≤|≥)", clean))
+    numeric_text = clean.replace(",", "")
     unit_match = re.search(
-        r"([0-9]+(?:\.[0-9]+)?)\s*(µg/L|ug/L|mg/L|g/L|µg/l|ug/l|mg/l|g/l)\b",
-        clean,
+        r"([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\s*"
+        r"(mol/(?:L|l)|mmol/(?:L|l)|µmol/(?:L|l)|umol/(?:L|l)|"
+        r"nmol/(?:L|l)|pmol/(?:L|l)|mg/(?:mL|ml)|µg/(?:mL|ml)|"
+        r"ug/(?:mL|ml)|ng/(?:mL|ml)|g/(?:L|l)|mg/(?:L|l)|"
+        r"µg/(?:L|l)|ug/(?:L|l)|ng/(?:L|l)|pg/(?:L|l)|"
+        r"mM|µM|uM|nM|pM|M|ppm|ppb|ppt)\b",
+        numeric_text,
         flags=re.IGNORECASE,
     )
     if unit_match:
-        unit = unit_match.group(2).replace("ug", "µg").replace("/l", "/L")
-        return float(unit_match.group(1)), unit
+        unit = (
+            unit_match.group(2)
+            .replace("ug", "µg")
+            .replace("/l", "/L")
+            .replace("/ml", "/mL")
+        )
+        value = None if is_censored else float(unit_match.group(1))
+        return value, unit, is_censored
 
-    value_match = re.search(r"([0-9]+(?:\.[0-9]+)?)", clean)
+    value_match = re.search(
+        r"([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)", numeric_text
+    )
     if not value_match:
-        return None, ""
-    return float(value_match.group(1)), ""
+        return None, "", is_censored
+    value = None if is_censored else float(value_match.group(1))
+    return value, "", is_censored
 
 
 def document_to_exact_rows(
@@ -385,8 +401,9 @@ def document_to_exact_rows(
             continue
         if duration_h is None or duration_h not in target["duration_hours"]:
             continue
-        effect_value, effect_unit = parse_effect_value(block.get("Effect conc.", ""))
-        if effect_value is None:
+        effect_text = block.get("Effect conc.", "")
+        effect_value, effect_unit, is_censored = parse_effect_value(effect_text)
+        if effect_value is None and not is_censored:
             continue
         rows.append(
             {
@@ -405,6 +422,8 @@ def document_to_exact_rows(
                 "dose_descriptor": descriptor,
                 "source_value": effect_value,
                 "source_unit": effect_unit,
+                "source_effect_text": effect_text,
+                "source_is_censored": is_censored,
                 "nominal_or_measured": block.get("Nominal / measured", ""),
                 "conc_based_on": block.get("Conc. based on", ""),
                 "basis_for_effect": block.get("Basis for effect", ""),

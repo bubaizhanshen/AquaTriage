@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ecoood"
-version = "0.2.0"
+version = "0.2.1"
 description = "Reliability assessment and screening-action benchmark for aquatic ecotoxicity prediction."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -21,7 +21,7 @@ dependencies = [
   "pyarrow>=16.0",
   "pyyaml>=6.0",
   "requests>=2.32",
-  "rdkit>=2024.3",
+  "rdkit==2024.3.2",
   "scikit-learn>=1.5",
   "scipy>=1.13",
   "seaborn>=0.13",

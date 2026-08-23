@@ -40,19 +40,21 @@ LARGE_DEPLOYMENT_SPLITS = [
 ]
 PRIMARY_WORKLOAD_METHODS = [
     "Random review",
-    "EcoOOD",
+    "Prediction-error risk score",
     "Ensemble SD risk",
     "Block-normalized kNN + SD risk",
     "Block-normalized kNN distance",
+    "Distinct-chemical block-normalized kNN distance",
     "Similarity AD",
 ]
 COMPONENT_COLUMNS = [
     "d_chem_knn",
     "d_chem_mahal",
-    "d_species_knn",
     "d_species_tax",
     "d_context",
+    "context_missing_fraction",
     "d_mech",
+    "bioactivity_missing_fraction",
     "u_model",
     "interval_width",
 ]
@@ -87,17 +89,20 @@ def aggregate_deduplicated(root: Path) -> pd.DataFrame:
 
 
 def component_correlations(predictions: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    component_columns = [
+        column for column in COMPONENT_COLUMNS if column in predictions.columns
+    ]
     rows: list[dict[str, object]] = []
     ratios: list[dict[str, object]] = []
     subset = predictions.loc[
         (predictions["model"] == "lightgbm")
         & predictions["split"].isin(CORE_SPLITS),
-        ["seed", "split", *COMPONENT_COLUMNS],
+        ["seed", "split", *component_columns],
     ].copy()
     for (seed, split), group in subset.groupby(["seed", "split"], sort=True):
-        corr = group[COMPONENT_COLUMNS].corr(method="spearman")
-        for i, left in enumerate(COMPONENT_COLUMNS):
-            for right in COMPONENT_COLUMNS[i + 1 :]:
+        corr = group[component_columns].corr(method="spearman")
+        for i, left in enumerate(component_columns):
+            for right in component_columns[i + 1 :]:
                 rows.append(
                     {
                         "seed": seed,
@@ -336,7 +341,7 @@ def paired_hierarchical_workload_delta_ci(
     *,
     n_bootstrap: int,
     random_state: int,
-    reference_method: str = "EcoOOD",
+    reference_method: str = "Prediction-error risk score",
 ) -> pd.DataFrame:
     """Cluster-aware paired deltas using identical sampled chemicals per method."""
     subset = classified.loc[
@@ -843,7 +848,7 @@ def main() -> None:
         ],
         n_bootstrap=args.bootstrap_replicates,
         random_state=20260724,
-        reference_method="EcoOOD",
+        reference_method="Prediction-error risk score",
     ).to_csv(
         output / "fixed_workload_paired_delta_ci.csv",
         index=False,

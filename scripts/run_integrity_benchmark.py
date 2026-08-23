@@ -53,12 +53,25 @@ def main() -> None:
         "ecoood_primary_high_error_quantile": 0.9,
         "ecoood_high_error_quantile_sensitivity": [0.8, 0.9, 0.95],
         "endpoint_conditional_conformal_min_group_size": 20,
-        "distance_sensitivity": "raw concatenated input-space kNN and block-normalized kNN",
+        "prediction_error_risk_components": (
+            "distinct-chemical Tanimoto fingerprint kNN; shrinkage Mahalanobis descriptors; "
+            "taxonomic lineage; endpoint-restricted missing-aware Gower context and missingness; "
+            "missing-aware bioactivity distance and missingness; ensemble SD"
+        ),
+        "distance_sensitivity": (
+            "legacy definitions; cosine fingerprint distance; Tanimoto k=1,3,5,10; "
+            "case-level and distinct-chemical block-normalized kNN"
+        ),
         "named_class_holdout_by_seed": {
             str(seed): named_class_for_seed(seed) for seed in args.seeds
         },
         "deterministic_rejection_policy": "excluded from scoreable benchmarks and assigned to withhold_review",
         "feature_policy": "explicit feature blocks exclude target, target-scale, identifier, source, and chemical-class fields",
+        "publication_year_policy": "used for temporal splitting and audit only; excluded from predictor and reliability inputs",
+        "logp_policy": "RDKit MolLogP recomputed for every parseable molecular input",
+        "default_unlabeled_triage": (
+            "five-neighbor case-level block-normalized kNN; a distinct-chemical version is reported as a sensitivity analysis"
+        ),
     }
     (args.output_root / "run_manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"

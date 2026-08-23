@@ -1,0 +1,9 @@
+chemical_id,pred_high_concern,input_eligible,ad_equal_block_distance_distinct_chemical,ad_equal_block_distance,equal_block_knn_plus_sd_risk,prediction_error_risk_score,direction_aligned_risk_score,ensemble_sd_risk,ad_similarity
+Q1,false,true,0.92,0.90,0.86,0.75,0.88,0.10,0.80
+Q2,true,true,0.82,0.80,0.78,0.70,0.82,0.20,0.72
+Q3,false,true,0.73,0.70,0.67,0.62,0.70,0.30,0.65
+Q4,true,true,0.61,0.60,0.58,0.55,0.63,0.40,0.55
+Q5,false,true,0.52,0.50,0.49,0.48,0.52,0.50,0.45
+Q6,false,true,0.43,0.40,0.41,0.40,0.44,0.60,0.35
+Q7,true,true,0.32,0.30,0.34,0.33,0.38,0.70,0.25
+Q8,false,false,,,,,,,

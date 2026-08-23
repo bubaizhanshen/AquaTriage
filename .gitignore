@@ -34,6 +34,11 @@ presentation/
 data/processed/*
 !data/processed/
 !data/processed/demo_ecoood.csv
+!data/processed/demo_application_development.csv
+!data/processed/demo_application_queue.csv
+!data/processed/echa_external_main.csv
+!data/processed/echa_external_seven_species.csv
+!data/processed/echa_extension_candidates.csv
 data/processed/invitrodb_mechanism_features.csv
 !data/README.md
 
@@ -48,10 +53,12 @@ scripts/generate_*support*.py
 scripts/generate_*boundary*.py
 scripts/generate_*external*figure*.py
 scripts/generate_figure*.py
+scripts/generate_distance_revision_figures_*.py
 scripts/generate_gate_method_comparison.py
 scripts/generate_technical*.py
 scripts/add_*_202*.py
 scripts/apply_*.py
+!scripts/apply_ecoood.py
 scripts/assemble_*.py
 scripts/audit_*.py
 !scripts/audit_benchmark_integrity.py
@@ -59,6 +66,7 @@ scripts/audit_*.py
 !scripts/audit_species_chemical_overlap.py
 scripts/build_*candidate*.py
 !scripts/build_pmra_regulatory_candidate_set.py
+!scripts/select_echa_external_candidates.py
 scripts/build_*inventory*.py
 scripts/clarify_*_202*.py
 scripts/clean_si_*_202*.py
@@ -69,10 +77,16 @@ scripts/final_*.py
 scripts/fix_*_202*.py
 scripts/import_*.py
 scripts/polish_*_202*.py
+scripts/quote_*.py
 scripts/probe_*.py
 scripts/refine_v*_frontmatter_*.py
 scripts/refine_submission_*.py
 scripts/revise_submission_*.py
+scripts/revise_*.py
+scripts/replace_submission_*.py
+scripts/restore_si_*.py
+scripts/shorten_*.py
+scripts/standardize_*.py
 scripts/remove_si_duplicate_equations.py
 scripts/remove_self_coined_terms_*.py
 scripts/run_external_regulatory_validation.py
@@ -81,6 +95,12 @@ scripts/run_external_regulatory_validation.py
 scripts/run_verified_seed_panel_validation_*.py
 scripts/summarize_reference_metadata.py
 scripts/update_*.py
+scripts/plot_figure*.py
+scripts/analyze_opinion*.py
+scripts/analyze_temporal_distance_without_year.py
+scripts/run_*_seed.sh
+scripts/run_current_*.sh
+scripts/run_deployment_aligned_*.sh
 scripts/generate_integrity_revision_figures.py
 tests/test_gate_method_comparison.py
 
@@ -88,6 +108,7 @@ tests/test_gate_method_comparison.py
 tmp/
 logs/
 _private/
+.scratch/
 
 # Generated graphics and office artifacts anywhere in the tree
 *.doc

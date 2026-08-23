@@ -78,6 +78,39 @@ def scaffold_split(
     )
 
 
+def scaffold_acyclic_identity_split(
+    df: pd.DataFrame,
+    schema: EcoOODSchema = DEFAULT_SCHEMA,
+    seed: int = 42,
+    holdout_fraction: float = 0.2,
+    calib_fraction: float = 0.125,
+) -> SplitIndices:
+    """Scaffold sensitivity that keeps each acyclic chemical as one group.
+
+    Standard Bemis-Murcko processing returns an empty scaffold for every
+    acyclic molecule. The primary scaffold split retains that conventional
+    definition. This sensitivity prevents the chemically heterogeneous empty
+    scaffold from becoming one oversized test group while keeping all records
+    for each acyclic chemical together.
+    """
+    working = df.copy()
+    scaffolds = working[schema.smiles].map(make_scaffold).astype(str)
+    chemical_ids = working[schema.chemical_id].fillna("__missing_chemical__").astype(str)
+    working["_scaffold_acyclic_identity"] = np.where(
+        scaffolds.eq("acyclic"),
+        "acyclic::" + chemical_ids,
+        scaffolds,
+    )
+    return group_holdout_split(
+        working,
+        group_col="_scaffold_acyclic_identity",
+        split_name="scaffold_acyclic_identity",
+        seed=seed,
+        holdout_fraction=holdout_fraction,
+        calib_fraction=calib_fraction,
+    )
+
+
 def chemical_random_split(
     df: pd.DataFrame,
     schema: EcoOODSchema = DEFAULT_SCHEMA,
@@ -375,6 +408,8 @@ def build_split(
         return random_split(df, seed=seed)
     if split == "scaffold":
         return scaffold_split(df, schema=schema, seed=seed)
+    if split == "scaffold_acyclic_identity":
+        return scaffold_acyclic_identity_split(df, schema=schema, seed=seed)
     if split == "chemical_random":
         return chemical_random_split(df, schema=schema, seed=seed)
     if split == "chemical_class":

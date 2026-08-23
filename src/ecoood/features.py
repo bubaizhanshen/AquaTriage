@@ -58,7 +58,14 @@ FORBIDDEN_PREDICTOR_FIELDS = {
     "chemical_class",
     "is_hard_ood",
     "known_ood",
+    "species_group",
+    "trophic_group",
+    "mech_feature_count",
 }
+
+# Linkage and coverage summaries are retained for audits but are not assay
+# measurements and therefore do not enter the predictor's bioactivity block.
+BIOACTIVITY_AUDIT_FIELDS = {"mech_feature_count"}
 
 
 def _safe_numeric(series: pd.Series) -> pd.Series:
@@ -89,13 +96,22 @@ def _morgan_fingerprint(mol: Any, n_bits: int) -> Any:
     return AllChem.GetMorganFingerprintAsBitVect(mol, radius=2, nBits=n_bits)
 
 
-def binary_fingerprints(smiles: pd.Series, n_bits: int = 2048) -> sparse.csr_matrix:
+def binary_fingerprints(
+    smiles: pd.Series,
+    n_bits: int = 2048,
+    *,
+    allow_legacy_zero_placeholder: bool = False,
+) -> sparse.csr_matrix:
     rows: list[np.ndarray] = []
-    for value in smiles.fillna(""):
+    for row_index, value in smiles.fillna("").items():
         value = str(value)
         if not value.strip():
-            rows.append(np.zeros(n_bits, dtype=np.float32))
-            continue
+            if allow_legacy_zero_placeholder:
+                rows.append(np.zeros(n_bits, dtype=np.float32))
+                continue
+            raise ValueError(
+                f"Missing SMILES at row {row_index}; resolve or reject the input before feature construction."
+            )
         mol = smiles_to_mol(value)
         if DataStructs is None or (rdFingerprintGenerator is None and AllChem is None):
             digest = hashlib.sha256(value.encode("utf-8")).digest()
@@ -106,8 +122,12 @@ def binary_fingerprints(smiles: pd.Series, n_bits: int = 2048) -> sparse.csr_mat
             rows.append(row)
             continue
         if mol is None:
-            rows.append(np.zeros(n_bits, dtype=np.float32))
-            continue
+            if allow_legacy_zero_placeholder:
+                rows.append(np.zeros(n_bits, dtype=np.float32))
+                continue
+            raise ValueError(
+                f"Unparseable SMILES at row {row_index}; resolve or reject the input before feature construction."
+            )
         fp = _morgan_fingerprint(mol, n_bits)
         arr = np.zeros((n_bits,), dtype=np.float32)
         DataStructs.ConvertToNumpyArray(fp, arr)
@@ -115,19 +135,27 @@ def binary_fingerprints(smiles: pd.Series, n_bits: int = 2048) -> sparse.csr_mat
     return sparse.csr_matrix(np.vstack(rows))
 
 
-def attach_rdkit_descriptors(df: pd.DataFrame, schema: EcoOODSchema = DEFAULT_SCHEMA) -> pd.DataFrame:
+def attach_rdkit_descriptors(
+    df: pd.DataFrame,
+    schema: EcoOODSchema = DEFAULT_SCHEMA,
+    *,
+    recompute_logp: bool = True,
+) -> pd.DataFrame:
     if Chem is None or Descriptors is None:
         return df.copy()
 
     result = df.copy()
     missing_cols = [name for name in RDKit_DESCRIPTOR_MAP if name not in result.columns]
-    if not missing_cols:
+    columns_to_compute = list(missing_cols)
+    if recompute_logp and "physchem_logp" not in columns_to_compute:
+        columns_to_compute.append("physchem_logp")
+    if not columns_to_compute:
         return result
 
-    values = {name: [] for name in missing_cols}
+    values = {name: [] for name in columns_to_compute}
     for smiles in result[schema.smiles].fillna(""):
         mol = smiles_to_mol(smiles)
-        for name in missing_cols:
+        for name in columns_to_compute:
             if mol is None:
                 values[name].append(np.nan)
             else:
@@ -153,9 +181,16 @@ class EcoFeatureBuilder:
         self,
         schema: EcoOODSchema = DEFAULT_SCHEMA,
         fingerprint_bits: int = 2048,
+        *,
+        include_study_year: bool = False,
+        recompute_rdkit_logp: bool = True,
+        allow_legacy_structure_placeholder: bool = False,
     ) -> None:
         self.schema = schema
         self.fingerprint_bits = fingerprint_bits
+        self.include_study_year = include_study_year
+        self.recompute_rdkit_logp = recompute_rdkit_logp
+        self.allow_legacy_structure_placeholder = allow_legacy_structure_placeholder
         self.tabular_transformer: ColumnTransformer | None = None
         self.numeric_cols: list[str] = []
         self.categorical_cols: list[str] = []
@@ -177,7 +212,6 @@ class EcoFeatureBuilder:
             schema.order,
             schema.clazz,
             schema.phylum,
-            schema.trophic_group,
             schema.medium,
         ]
         self.categorical_cols = [col for col in categorical_seed if col in df.columns]
@@ -190,13 +224,23 @@ class EcoFeatureBuilder:
         self.mechanism_cols = [
             col
             for col in df.columns
-            if col.startswith("mech_") and pd.api.types.is_numeric_dtype(df[col])
+            if (
+                col.startswith("mech_")
+                and col not in BIOACTIVITY_AUDIT_FIELDS
+                and pd.api.types.is_numeric_dtype(df[col])
+            )
         ]
         self.context_cols = [
             col
             for col in df.columns
             if (
-                col in {schema.duration_h, schema.temperature_c, schema.ph, schema.study_year}
+                col
+                in {
+                    schema.duration_h,
+                    schema.temperature_c,
+                    schema.ph,
+                    *([schema.study_year] if self.include_study_year else []),
+                }
                 or col.startswith("ctx_")
             )
             and pd.api.types.is_numeric_dtype(df[col])
@@ -215,7 +259,6 @@ class EcoFeatureBuilder:
                 schema.order,
                 schema.clazz,
                 schema.phylum,
-                schema.trophic_group,
             )
             if col in df.columns
         ]
@@ -291,7 +334,12 @@ class EcoFeatureBuilder:
         self.dense_transformers[name] = transformer
 
     def fit(self, df: pd.DataFrame) -> "EcoFeatureBuilder":
-        self._infer_columns(df)
+        augmented = attach_rdkit_descriptors(
+            df,
+            self.schema,
+            recompute_logp=self.recompute_rdkit_logp,
+        )
+        self._infer_columns(augmented)
         self.tabular_transformer = ColumnTransformer(
             transformers=[
                 ("numeric", self._numeric_pipeline(), self.numeric_cols),
@@ -303,32 +351,40 @@ class EcoFeatureBuilder:
             ],
             sparse_threshold=1.0,
         )
-        self.tabular_transformer.fit(df)
+        self.tabular_transformer.fit(augmented)
         self.dense_transformers = {}
-        self._fit_dense_transformer("descriptor", df, self.descriptor_cols)
+        self._fit_dense_transformer("descriptor", augmented, self.descriptor_cols)
         self._fit_dense_transformer(
             "species",
-            df,
+            augmented,
             self.species_cols,
             self.species_categorical_cols,
             sparse_output=True,
         )
         self._fit_dense_transformer(
             "context",
-            df,
+            augmented,
             self.context_cols,
             self.context_categorical_cols,
         )
-        self._fit_dense_transformer("mechanism", df, self.mechanism_cols)
+        self._fit_dense_transformer("mechanism", augmented, self.mechanism_cols)
         return self
 
     def transform(self, df: pd.DataFrame) -> FeatureBundle:
         if self.tabular_transformer is None:
             raise RuntimeError("EcoFeatureBuilder must be fit before transform().")
-        augmented = attach_rdkit_descriptors(df, self.schema)
+        augmented = attach_rdkit_descriptors(
+            df,
+            self.schema,
+            recompute_logp=self.recompute_rdkit_logp,
+        )
         tabular = self.tabular_transformer.transform(augmented)
         tabular = sparse.csr_matrix(tabular)
-        fingerprint = binary_fingerprints(augmented[self.schema.smiles], self.fingerprint_bits)
+        fingerprint = binary_fingerprints(
+            augmented[self.schema.smiles],
+            self.fingerprint_bits,
+            allow_legacy_zero_placeholder=self.allow_legacy_structure_placeholder,
+        )
 
         def _dense(name: str) -> np.ndarray | sparse.csr_matrix:
             transformer = self.dense_transformers.get(name)

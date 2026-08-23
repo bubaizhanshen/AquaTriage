@@ -31,15 +31,17 @@ def test_fixed_workload_compares_methods_at_identical_review_count() -> None:
 
     assert summary["review_count"].nunique() == 1
     assert summary["review_count"].iloc[0] == 2
-    ecoood = summary.loc[summary["method"] == "EcoOOD"].iloc[0]
-    assert ecoood["rescued_false_negatives"] == 2
-    assert ecoood["rescued_baseline_misses"] == 2
-    assert ecoood["lower_priority_queue_size"] == 6
-    assert ecoood["lower_priority_false_omission_rate"] == 0
-    assert ecoood["high_concern_left_lower_priority_fraction"] == 0
+    risk = summary.loc[
+        summary["method"] == "Prediction-error risk score"
+    ].iloc[0]
+    assert risk["rescued_false_negatives"] == 2
+    assert risk["rescued_baseline_misses"] == 2
+    assert risk["lower_priority_queue_size"] == 6
+    assert risk["lower_priority_false_omission_rate"] == 0
+    assert risk["high_concern_left_lower_priority_fraction"] == 0
     assert (
-        ecoood["lower_priority_false_reassurance"]
-        == ecoood["lower_priority_false_omission_rate"]
+        risk["lower_priority_false_reassurance"]
+        == risk["lower_priority_false_omission_rate"]
     )
 
 

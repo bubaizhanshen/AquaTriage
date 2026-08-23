@@ -12,6 +12,7 @@ from ecoood.schema import DEFAULT_SCHEMA
 from ecoood.splits import build_split, named_class_for_seed
 
 
+ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SPLITS = [
     "random",
     "chemical_random",
@@ -22,6 +23,11 @@ DEFAULT_SPLITS = [
 ]
 DEFAULT_MODELS = ["lightgbm", "random_forest", "xgboost"]
 DEFAULT_SEEDS = [40, 41, 42, 43, 44]
+EXTERNAL_DATA_FILES = [
+    "echa_external_main.csv",
+    "echa_external_seven_species.csv",
+    "echa_extension_candidates.csv",
+]
 PREDICTION_COLUMNS = [
     "chemical_id",
     "chemical_name",
@@ -39,6 +45,11 @@ PREDICTION_COLUMNS = [
     "endpoint_interval_lower",
     "endpoint_interval_upper",
     "endpoint_interval_width",
+    "prediction_error_risk_score",
+    "prediction_error_risk_q80",
+    "prediction_error_risk_q95",
+    "prediction_error_risk_endpoint_balanced",
+    # Compatibility columns retained by older result directories.
     "ecoood_score",
     "ecoood_q80",
     "ecoood_q95",
@@ -105,6 +116,11 @@ def sha256(path: Path) -> str:
 def normalize_release_columns(frame: pd.DataFrame) -> pd.DataFrame:
     # Keep public release tables aligned with the terminology used by the package API.
     replacements = {
+        "ecoood_score": "prediction_error_risk_score",
+        "ecoood_q80": "prediction_error_risk_q80",
+        "ecoood_q95": "prediction_error_risk_q95",
+        "ecoood_endpoint_balanced": "prediction_error_risk_endpoint_balanced",
+        "ecoood_": "prediction_error_risk_",
         "catastrophic_error_capture_rate": "top_decile_error_capture_rate",
         "catastrophic_capture": "top_decile_error_capture",
         "catastrophic_error_reduction": "top_decile_error_rate_reduction",
@@ -116,7 +132,68 @@ def normalize_release_columns(frame: pd.DataFrame) -> pd.DataFrame:
         for old, new in replacements.items():
             normalized = normalized.replace(old, new)
         renamed[column] = normalized
-    return frame.rename(columns=renamed)
+    normalized_frame = frame.rename(columns=renamed)
+
+    # Older analysis tables also store internal score names as categorical values.
+    # Restrict value normalization to columns that describe methods or score fields.
+    value_columns = {
+        column
+        for column in normalized_frame.columns
+        if column in {
+            "method",
+            "signal",
+            "score_col",
+            "score_column",
+            "reference_method",
+            "selected_method",
+            "selected_signal",
+            "reliability_signal",
+            "candidate",
+            "score",
+            "delta_definition",
+        }
+        or column.endswith("_method")
+        or column.endswith("_signal")
+        or column.endswith("_score_column")
+    }
+    for column in value_columns:
+        if not (
+            pd.api.types.is_object_dtype(normalized_frame[column])
+            or pd.api.types.is_string_dtype(normalized_frame[column])
+        ):
+            continue
+        values = normalized_frame[column].astype("string")
+        values = values.replace(
+            {
+                "EcoOOD": "Prediction-error risk score",
+                "EcoOOD endpoint-balanced": (
+                    "Prediction-error risk score, endpoint-balanced"
+                ),
+                "EcoOOD q80": "Prediction-error risk score, top 20%",
+                "EcoOOD q95": "Prediction-error risk score, top 5%",
+                "comparator minus EcoOOD": (
+                    "comparator minus prediction-error risk score"
+                ),
+                "max_ecoood": "max_prediction_error_risk_score",
+                "max_ecoood_endpoint_balanced": (
+                    "max_prediction_error_risk_endpoint_balanced"
+                ),
+                "max_ecoood_q80": "max_prediction_error_risk_q80",
+                "max_ecoood_q95": "max_prediction_error_risk_q95",
+            }
+        )
+        values = values.str.replace(
+            "ecoood_endpoint_balanced",
+            "prediction_error_risk_endpoint_balanced",
+            regex=False,
+        )
+        values = values.str.replace("ecoood_q80", "prediction_error_risk_q80", regex=False)
+        values = values.str.replace("ecoood_q95", "prediction_error_risk_q95", regex=False)
+        values = values.str.replace("ecoood_score", "prediction_error_risk_score", regex=False)
+        values = values.str.replace("ecoood_", "prediction_error_risk_", regex=False)
+        values = values.replace({"ecoood": "prediction_error_risk_score"})
+        normalized_frame[column] = values
+    return normalized_frame
 
 
 def export_split_assignments(
@@ -210,8 +287,11 @@ def copy_analysis_tables(source: Path, destination: Path) -> None:
         raise FileNotFoundError(source)
     destination.mkdir(parents=True, exist_ok=True)
     for path in sorted(source.glob("*.csv")):
+        destination_name = path.name.replace(
+            "ecoood_", "prediction_error_risk_"
+        )
         normalize_release_columns(pd.read_csv(path)).to_csv(
-            destination / path.name,
+            destination / destination_name,
             index=False,
         )
 
@@ -230,15 +310,18 @@ def copy_supplementary_tables(benchmark_root: Path, destination: Path) -> None:
 def write_bundle_readme(destination: Path, release_tag: str) -> None:
     text = f"""# EcoOOD analysis release {release_tag}
 
-This is the frozen analysis bundle for the EcoOOD aquatic ecotoxicity
+This is the versioned analysis bundle for the EcoOOD aquatic ecotoxicity
 screening benchmark. It contains the derived scoreable table, fixed split
 assignments, compact case-level predictions, and statistical audit tables.
 
 ## Contents
 
-- `data/EcoOOD_benchmark_snapshot_structured.csv`: frozen scoreable benchmark
+- `data/EcoOOD_benchmark_snapshot_structured.csv`: reference scoreable benchmark
 - `data/feature_manifest.csv`: predictor roles, cardinalities, and missingness
 - `data/curated_data_flow_summary.csv`: scoreable and rejected record counts
+- `data/echa_external_main.csv`: 100-case external ECHA evaluation set
+- `data/echa_external_seven_species.csv`: nested seven-species sensitivity set
+- `data/echa_extension_candidates.csv`: fixed identity-only extension sample
 - `data/split_assignments.csv`: train, calibration, and test assignments
 - `predictions/predictions_core.csv`: compact case-level model and reliability outputs
 - `tables/`: benchmark, fixed-workload, sensitivity, reference-fold, and
@@ -318,6 +401,11 @@ def main() -> None:
         data_flow,
         destination / "data" / "curated_data_flow_summary.csv",
     )
+    for filename in EXTERNAL_DATA_FILES:
+        source = ROOT / "data" / "processed" / filename
+        if not source.exists():
+            raise FileNotFoundError(source)
+        shutil.copy2(source, destination / "data" / filename)
     data = pd.read_csv(args.snapshot)
     export_split_assignments(
         data,

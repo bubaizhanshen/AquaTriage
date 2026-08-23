@@ -3,13 +3,39 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
 from scipy import sparse
 from sklearn.ensemble import IsolationForest
+from sklearn.metrics import pairwise_distances_chunked
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.preprocessing import StandardScaler
 
 from .features import FeatureBundle
 from .ood import _mahalanobis_scores, _mean_knn_distance
+
+
+def _mean_distinct_group_knn_distance(
+    train,
+    query,
+    train_groups,
+    *,
+    n_neighbors: int = 5,
+    metric: str = "euclidean",
+) -> np.ndarray:
+    """Average group-minimum distances so each chemical contributes once."""
+    group_values = pd.Series(np.asarray(train_groups)).astype("string").fillna("__missing__")
+    group_codes, uniques = pd.factorize(group_values, sort=False)
+    if len(uniques) == 0:
+        return np.full(query.shape[0], np.nan, dtype=float)
+    k = min(max(1, n_neighbors), len(uniques))
+    scores: list[float] = []
+    for distance_chunk in pairwise_distances_chunked(query, train, metric=metric):
+        for distances in distance_chunk:
+            group_minimum = np.full(len(uniques), np.inf, dtype=float)
+            np.minimum.at(group_minimum, group_codes, distances)
+            nearest = np.partition(group_minimum, k - 1)[:k]
+            scores.append(float(np.mean(nearest)))
+    return np.asarray(scores, dtype=float)
 
 
 def _tanimoto_novelty(train, query, chunk_size: int = 256) -> np.ndarray:
@@ -44,6 +70,7 @@ class ADBaselineScores:
     descriptor_range: np.ndarray
     distance_to_model: np.ndarray
     equal_block_distance: np.ndarray
+    equal_block_distance_distinct_chemical: np.ndarray
     interval_width: np.ndarray
     mahalanobis: np.ndarray
     isolation_forest: np.ndarray
@@ -56,6 +83,9 @@ class ADBaselineScores:
             "ad_range": self.descriptor_range,
             "ad_distance_to_model": self.distance_to_model,
             "ad_equal_block_distance": self.equal_block_distance,
+            "ad_equal_block_distance_distinct_chemical": (
+                self.equal_block_distance_distinct_chemical
+            ),
             "uncertainty_interval_width": self.interval_width,
             "ood_mahalanobis": self.mahalanobis,
             "ood_isolation_forest": self.isolation_forest,
@@ -76,6 +106,7 @@ class ApplicabilityDomainScorer:
         self.equal_block_scales: list[float] = []
         self.equal_block_scale_by_name: dict[str, float] = {}
         self.equal_block_train: sparse.csr_matrix | None = None
+        self.train_chemical_ids: np.ndarray | None = None
 
     @staticmethod
     def _as_csr(block) -> sparse.csr_matrix:
@@ -170,8 +201,18 @@ class ApplicabilityDomainScorer:
             dense = dense.reshape(-1, 1)
         return np.nan_to_num(dense, nan=0.0, posinf=0.0, neginf=0.0)
 
-    def fit(self, train_bundle: FeatureBundle) -> "ApplicabilityDomainScorer":
+    def fit(
+        self,
+        train_bundle: FeatureBundle,
+        *,
+        chemical_ids=None,
+    ) -> "ApplicabilityDomainScorer":
         self.train_bundle = train_bundle
+        if chemical_ids is not None:
+            values = np.asarray(chemical_ids)
+            if len(values) != train_bundle.full.shape[0]:
+                raise ValueError("chemical_ids must align with the training feature rows.")
+            self.train_chemical_ids = values
         self.equal_block_train = self._fit_equal_block_representation(train_bundle)
         descriptor = np.asarray(train_bundle.descriptor, dtype=float)
         if descriptor.ndim == 1:
@@ -248,6 +289,19 @@ class ApplicabilityDomainScorer:
             if self.equal_block_train is not None and self.equal_block_train.shape[1] > 0
             else np.zeros(len(distance_to_model), dtype=float)
         )
+        equal_block_distance_distinct_chemical = (
+            _mean_distinct_group_knn_distance(
+                self.equal_block_train,
+                equal_block_query,
+                self.train_chemical_ids,
+                n_neighbors=5,
+                metric="euclidean",
+            )
+            if self.equal_block_train is not None
+            and self.equal_block_train.shape[1] > 0
+            and self.train_chemical_ids is not None
+            else np.asarray(equal_block_distance, dtype=float).copy()
+        )
         interval_width_arr = (
             np.asarray(interval_width, dtype=float)
             if interval_width is not None
@@ -278,6 +332,10 @@ class ApplicabilityDomainScorer:
             descriptor_range=np.asarray(descriptor_range, dtype=float),
             distance_to_model=distance_to_model,
             equal_block_distance=np.asarray(equal_block_distance, dtype=float),
+            equal_block_distance_distinct_chemical=np.asarray(
+                equal_block_distance_distinct_chemical,
+                dtype=float,
+            ),
             interval_width=interval_width_arr,
             mahalanobis=np.asarray(mahalanobis, dtype=float),
             isolation_forest=np.asarray(isolation_forest, dtype=float),

@@ -30,6 +30,39 @@ def test_chemical_random_split_assigns_each_chemical_to_one_partition() -> None:
     assert split.test_is_ood.all()
 
 
+def test_acyclic_scaffold_sensitivity_keeps_test_chemical_out_of_references() -> None:
+    rows = []
+    for chemical, smiles in (
+        ("acyclic_a", "CCCC"),
+        ("acyclic_b", "CCCO"),
+        ("ring_a", "c1ccccc1"),
+        ("ring_b", "C1CCCCC1"),
+        ("ring_c", "c1ccncc1"),
+    ):
+        for replicate in range(8):
+            rows.append(
+                {
+                    "chemical_id": chemical,
+                    "smiles": smiles,
+                    "replicate": replicate,
+                }
+            )
+    df = pd.DataFrame(rows)
+    split = build_split(
+        df,
+        split="scaffold_acyclic_identity",
+        schema=DEFAULT_SCHEMA,
+        seed=42,
+    )
+
+    test_chemicals = set(df.loc[split.test, "chemical_id"])
+    reference_chemicals = set(df.loc[split.train, "chemical_id"]) | set(
+        df.loc[split.calib, "chemical_id"]
+    )
+    assert test_chemicals.isdisjoint(reference_chemicals)
+    assert split.split_name == "scaffold_acyclic_identity"
+
+
 def test_chemical_class_split_holds_out_atomic_class_in_multilabel_rows() -> None:
     df = make_demo_dataset(n=240, seed=123)
     df[DEFAULT_SCHEMA.chemical_class] = "unclassified"

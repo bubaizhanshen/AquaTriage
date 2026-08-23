@@ -29,6 +29,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--dsstox-source", type=Path, default=DSSTOX_SOURCE)
+    parser.add_argument("--structure-cache", type=Path, default=STRUCTURE_CACHE)
     parser.add_argument("--max-workers", type=int, default=8)
     return parser.parse_args()
 
@@ -36,14 +38,15 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     panel = pd.read_csv(args.input)
+    args.structure_cache.parent.mkdir(parents=True, exist_ok=True)
     chemical_index = panel[["chemical_name", "casrn"]].drop_duplicates().copy()
     chemical_index = chemical_index.rename(columns={"casrn": "cas_number"})
     chemical_index["dtxsid"] = ""
 
     resolved = enrich_structures(
         chemical_index[["cas_number", "chemical_name", "dtxsid"]],
-        cache_path=STRUCTURE_CACHE,
-        dsstox_sources=[DSSTOX_SOURCE],
+        cache_path=args.structure_cache,
+        dsstox_sources=[args.dsstox_source],
         max_workers=args.max_workers,
     ).rename(columns={"cas_number": "casrn"})
 

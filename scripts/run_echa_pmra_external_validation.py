@@ -14,35 +14,65 @@ from ecoood.features import EcoFeatureBuilder, attach_rdkit_descriptors
 from ecoood.models import BootstrapEnsembleRegressor
 from ecoood.ood import CalibrationRiskScorer, EcoOODScorer
 from ecoood.schema import DEFAULT_SCHEMA
+from scripts.audit_benchmark_integrity import strict_input_eligibility_audit
 
 RDLogger.DisableLog("rdApp.*")
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_PATH = ROOT / "data" / "processed" / "ecotox_acute_ecoood_1000chem_dsstox_mech_structured.csv"
+DATA_PATH = ROOT / "data" / "processed" / "EcoOOD_benchmark_snapshot_structured.csv"
 DEFAULT_PANEL_PATH = (
     ROOT
     / "results"
     / "external_regulatory_prep"
-    / "echa_pmra_external_clean"
-    / "echa_pmra_case_panel_main.csv"
+    / "echa_external_main.csv"
 )
+PUBLIC_PANEL_PATH = ROOT / "data" / "processed" / "echa_external_main.csv"
 DEFAULT_OUT_DIR = ROOT / "results" / "echa_pmra_external_validation_main"
 MODEL_NAME = "lightgbm"
 DEFAULT_SEEDS = [40, 41, 42, 43, 44]
 REVIEW_FRACTION = 0.25
+RELIABILITY_METHODS = {
+    "ecoood": "ecoood_score",
+    "ecoood_endpoint_balanced": "ecoood_endpoint_balanced",
+    "ensemble_sd_risk": "ensemble_sd_risk",
+    "input_space_knn_plus_sd_risk": "input_space_knn_plus_sd_risk",
+    "equal_block_knn_plus_sd_risk": "equal_block_knn_plus_sd_risk",
+    "generic_support_plus_sd_risk": "generic_support_plus_sd_risk",
+    "distance_to_model": "ad_distance_to_model",
+    "equal_block_distance": "ad_equal_block_distance",
+    "distinct_chemical_equal_block_distance": (
+        "ad_equal_block_distance_distinct_chemical"
+    ),
+    "similarity_ad_risk": "ad_similarity_risk",
+}
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run case-level external validation on cleaned ECHA PMRA panels."
+        description="Run case-level external validation on a cleaned ECHA evaluation set."
     )
     parser.add_argument("--data-path", type=Path, default=DATA_PATH)
-    parser.add_argument("--panel-path", type=Path, default=DEFAULT_PANEL_PATH)
+    parser.add_argument(
+        "--panel-path",
+        type=Path,
+        default=PUBLIC_PANEL_PATH if PUBLIC_PANEL_PATH.exists() else DEFAULT_PANEL_PATH,
+    )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--seeds", nargs="+", type=int, default=DEFAULT_SEEDS)
     parser.add_argument("--bootstrap-replicates", type=int, default=1000)
     parser.add_argument("--ensemble-n-jobs", type=int, default=5)
+    parser.add_argument(
+        "--use-original-benchmark",
+        action="store_true",
+        help=(
+            "Use the deduplicated original benchmark without the current "
+            "molecular-input gate. The default uses the current application inputs."
+        ),
+    )
+    parser.add_argument("--include-study-year", action="store_true")
+    parser.add_argument("--keep-linked-logp", action="store_true")
+    parser.add_argument("--allow-legacy-structure-placeholder", action="store_true")
     return parser.parse_args()
 
 
@@ -112,17 +142,6 @@ def fixed_burden_metrics(
 def summarize_seed(seed: int, frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     metric_rows: list[dict[str, object]] = []
     burden_rows: list[dict[str, object]] = []
-    methods = {
-        "ecoood": "ecoood_score",
-        "ecoood_endpoint_balanced": "ecoood_endpoint_balanced",
-        "ensemble_sd_risk": "ensemble_sd_risk",
-        "input_space_knn_plus_sd_risk": "input_space_knn_plus_sd_risk",
-        "equal_block_knn_plus_sd_risk": "equal_block_knn_plus_sd_risk",
-        "generic_support_plus_sd_risk": "generic_support_plus_sd_risk",
-        "distance_to_model": "ad_distance_to_model",
-        "equal_block_distance": "ad_equal_block_distance",
-        "similarity_ad_risk": "ad_similarity_risk",
-    }
     grouped = list(frame.groupby("endpoint", sort=False)) + [("pooled", frame)]
     for endpoint_name, subset in grouped:
         if subset.empty:
@@ -136,7 +155,7 @@ def summarize_seed(seed: int, frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.Dat
             "n_chemicals": int(subset["chemical_id"].nunique()),
             **regression_metrics(y_true, y_pred),
         }
-        for method_name, score_col in methods.items():
+        for method_name, score_col in RELIABILITY_METHODS.items():
             score = subset[score_col].to_numpy(dtype=float)
             direct = ood_metrics(y_true, y_pred, score, None)
             metric_rows.append(
@@ -165,6 +184,59 @@ def summarize_seed(seed: int, frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.Dat
                 }
             )
     return pd.DataFrame(metric_rows), pd.DataFrame(burden_rows)
+
+
+def chemical_level_fixed_workload(seed: int, frame: pd.DataFrame) -> pd.DataFrame:
+    """Evaluate external error capture with chemicals as the decision unit."""
+    endpoint = frame.groupby(["chemical_id", "endpoint"], as_index=False).agg(
+        abs_error=("abs_error", "median"),
+        **{
+            method_name: (score_col, "median")
+            for method_name, score_col in RELIABILITY_METHODS.items()
+        },
+    )
+    chemicals = endpoint.groupby("chemical_id", as_index=False).agg(
+        abs_error=("abs_error", "max"),
+        **{
+            method_name: (method_name, "max")
+            for method_name in RELIABILITY_METHODS
+        },
+    )
+    n_chemicals = len(chemicals)
+    review_n = max(1, int(round(REVIEW_FRACTION * n_chemicals)))
+    high_error_n = max(1, int(np.ceil(0.10 * n_chemicals)))
+    high_error_ids = set(
+        chemicals.sort_values(
+            ["abs_error", "chemical_id"],
+            ascending=[False, True],
+            kind="mergesort",
+        )
+        .head(high_error_n)["chemical_id"]
+    )
+
+    rows: list[dict[str, object]] = []
+    for method_name in RELIABILITY_METHODS:
+        reviewed_ids = set(
+            chemicals.sort_values(
+                [method_name, "chemical_id"],
+                ascending=[False, True],
+                kind="mergesort",
+            )
+            .head(review_n)["chemical_id"]
+        )
+        rows.append(
+            {
+                "seed": seed,
+                "method": method_name,
+                "n_chemicals": n_chemicals,
+                "review_n": review_n,
+                "high_error_n": high_error_n,
+                "high_error_capture_rate": (
+                    len(reviewed_ids & high_error_ids) / high_error_n
+                ),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def aggregate_summary(frame: pd.DataFrame, group_cols: list[str]) -> pd.DataFrame:
@@ -230,8 +302,22 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     write_status(out_dir, "Loading train benchmark and cleaned external panel.")
-    train_df = attach_rdkit_descriptors(pd.read_csv(args.data_path), DEFAULT_SCHEMA)
-    panel = attach_rdkit_descriptors(pd.read_csv(args.panel_path), DEFAULT_SCHEMA)
+    recompute_logp = not args.keep_linked_logp
+    source_train_df = pd.read_csv(args.data_path)
+    if args.use_original_benchmark:
+        analysis_train_df = source_train_df
+    else:
+        analysis_train_df, _ = strict_input_eligibility_audit(source_train_df)
+    train_df = attach_rdkit_descriptors(
+        analysis_train_df,
+        DEFAULT_SCHEMA,
+        recompute_logp=recompute_logp,
+    )
+    panel = attach_rdkit_descriptors(
+        pd.read_csv(args.panel_path),
+        DEFAULT_SCHEMA,
+        recompute_logp=recompute_logp,
+    )
     chemical_identity_overlap_audit(train_df, panel).to_csv(
         out_dir / "external_train_panel_identity_overlap_audit.csv", index=False
     )
@@ -239,13 +325,19 @@ def main() -> None:
     seed_predictions: list[pd.DataFrame] = []
     metrics_frames: list[pd.DataFrame] = []
     burden_frames: list[pd.DataFrame] = []
+    chemical_burden_frames: list[pd.DataFrame] = []
     cluster_bootstrap_frames: list[pd.DataFrame] = []
 
     for idx, seed in enumerate(args.seeds, start=1):
         write_status(out_dir, f"Running seed {seed} ({idx}/{len(args.seeds)})")
         train_seed_df, calib_df = calibration_split_by_chemical(train_df, seed=seed)
 
-        feature_builder = EcoFeatureBuilder(schema=DEFAULT_SCHEMA)
+        feature_builder = EcoFeatureBuilder(
+            schema=DEFAULT_SCHEMA,
+            include_study_year=args.include_study_year,
+            recompute_rdkit_logp=recompute_logp,
+            allow_legacy_structure_placeholder=args.allow_legacy_structure_placeholder,
+        )
         train_bundle = feature_builder.fit_transform(train_seed_df)
         calib_bundle = feature_builder.transform(calib_df)
         external_bundle = feature_builder.transform(panel)
@@ -267,7 +359,10 @@ def main() -> None:
         calib_interval = conformal.predict(calib_pred.mean, scale=np.maximum(calib_pred.std, 1e-3))
         external_interval = conformal.predict(external_pred.mean, scale=np.maximum(external_pred.std, 1e-3))
 
-        scorer = EcoOODScorer(schema=DEFAULT_SCHEMA).fit(train_seed_df, train_bundle)
+        scorer = EcoOODScorer(
+            schema=DEFAULT_SCHEMA,
+            include_study_year=args.include_study_year,
+        ).fit(train_seed_df, train_bundle)
         calib_components = scorer.component_frame(
             calib_df,
             calib_bundle,
@@ -282,7 +377,10 @@ def main() -> None:
             external_bundle,
             model_std=external_pred.std,
         )
-        endpoint_balanced_scorer = EcoOODScorer(schema=DEFAULT_SCHEMA).fit(
+        endpoint_balanced_scorer = EcoOODScorer(
+            schema=DEFAULT_SCHEMA,
+            include_study_year=args.include_study_year,
+        ).fit(
             train_seed_df,
             train_bundle,
         )
@@ -296,7 +394,10 @@ def main() -> None:
             balance_groups=True,
         )
 
-        ad_scorer = ApplicabilityDomainScorer().fit(train_bundle)
+        ad_scorer = ApplicabilityDomainScorer().fit(
+            train_bundle,
+            chemical_ids=train_seed_df[DEFAULT_SCHEMA.chemical_id],
+        )
         calib_ad = ad_scorer.predict(
             calib_bundle,
             model_std=calib_pred.std,
@@ -403,6 +504,9 @@ def main() -> None:
         pred["ad_similarity"] = external_ad.similarity
         pred["ad_distance_to_model"] = external_ad.distance_to_model
         pred["ad_equal_block_distance"] = external_ad.equal_block_distance
+        pred["ad_equal_block_distance_distinct_chemical"] = (
+            external_ad.equal_block_distance_distinct_chemical
+        )
         pred["ad_similarity_risk"] = pred["ad_similarity"]
         seed_predictions.append(pred)
         pred.to_csv(out_dir / f"external_predictions_seed_{seed}.csv", index=False)
@@ -410,6 +514,7 @@ def main() -> None:
         metric_frame, burden_frame = summarize_seed(seed, pred)
         metrics_frames.append(metric_frame)
         burden_frames.append(burden_frame)
+        chemical_burden_frames.append(chemical_level_fixed_workload(seed, pred))
         cluster_bootstrap_frames.append(
             chemical_cluster_bootstrap(
                 pred,
@@ -421,10 +526,14 @@ def main() -> None:
     predictions = pd.concat(seed_predictions, ignore_index=True)
     metrics_all = pd.concat(metrics_frames, ignore_index=True)
     burden_all = pd.concat(burden_frames, ignore_index=True)
+    chemical_burden_all = pd.concat(chemical_burden_frames, ignore_index=True)
 
     predictions.to_csv(out_dir / "external_predictions_all.csv", index=False)
     metrics_all.to_csv(out_dir / "external_metrics_all.csv", index=False)
     burden_all.to_csv(out_dir / "external_burden_all.csv", index=False)
+    chemical_burden_all.to_csv(
+        out_dir / "external_chemical_level_burden_all.csv", index=False
+    )
     cluster_bootstrap = pd.concat(cluster_bootstrap_frames, ignore_index=True)
     cluster_bootstrap.to_csv(out_dir / "external_cluster_bootstrap_all.csv", index=False)
     cluster_quantiles = (
@@ -438,8 +547,12 @@ def main() -> None:
 
     metrics_summary = aggregate_summary(metrics_all, ["endpoint", "method", "score_col"])
     burden_summary = aggregate_summary(burden_all, ["endpoint", "method", "score_col"])
+    chemical_burden_summary = aggregate_summary(chemical_burden_all, ["method"])
     metrics_summary.to_csv(out_dir / "external_metrics_summary.csv", index=False)
     burden_summary.to_csv(out_dir / "external_burden_summary.csv", index=False)
+    chemical_burden_summary.to_csv(
+        out_dir / "external_chemical_level_burden_summary.csv", index=False
+    )
 
     case_summary = (
         predictions.groupby(
@@ -464,6 +577,9 @@ def main() -> None:
 
     lines = [
         f"Train benchmark path: {args.data_path}",
+        f"Benchmark rows loaded: {len(source_train_df)}",
+        f"Analysis training rows before external calibration split: {len(train_df)}",
+        f"Application input gate used: {not args.use_original_benchmark}",
         f"Panel path: {args.panel_path}",
         f"Cases: {panel.shape[0]}",
         f"Chemicals: {panel['chemical_name'].nunique()}",

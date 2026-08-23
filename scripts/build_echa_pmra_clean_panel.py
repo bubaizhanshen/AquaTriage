@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from rdkit import RDLogger
+from rdkit import Chem, RDLogger
 
 from ecoood.features import attach_rdkit_descriptors
 from ecoood.invitrodb import attach_mechanistic_features, load_or_build_mechanistic_features
@@ -52,6 +52,10 @@ FRESHWATER_PATTERN = re.compile(
     r"freshwater|de-chlorinated freshwater|tap water|drinking water",
     flags=re.IGNORECASE,
 )
+VARIABLE_COMPOSITION_PATTERN = re.compile(
+    r"\breaction (?:mass|products?)\b|\bmixtures?\b|\buvcb\b|\bmixed\b",
+    flags=re.IGNORECASE,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,6 +64,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--input-path", type=Path, default=INPUT_PATH)
     parser.add_argument("--output-dir", type=Path, default=OUT_DIR)
+    parser.add_argument("--source-prefix", default="echa_pmra")
+    parser.add_argument("--train-path", type=Path, default=TRAIN_PATH)
+    parser.add_argument("--mechanism-cache", type=Path, default=MECHANISM_CACHE)
+    parser.add_argument("--invitrodb-summary", type=Path, default=INVITRODB_SUMMARY)
     return parser.parse_args()
 
 
@@ -77,6 +85,47 @@ def mode_or_first(series: pd.Series) -> object:
         return np.nan
     mode = clean.mode()
     return mode.iloc[0] if not mode.empty else clean.iloc[0]
+
+
+def join_unique(series: pd.Series) -> str:
+    values = sorted(
+        {
+            str(value).strip()
+            for value in series.dropna()
+            if str(value).strip()
+        }
+    )
+    return "; ".join(values)
+
+
+def is_acceptable_study_record(value: object) -> bool:
+    label = "" if pd.isna(value) else str(value).lower()
+    return (
+        "experimental study" in label
+        and "disregarded" not in label
+        and any(
+            term in label
+            for term in ("key", "supporting", "weight of evidence")
+        )
+    )
+
+
+def has_usable_molecular_representation(value: object) -> bool:
+    smiles = "" if pd.isna(value) else str(value).strip()
+    if not smiles:
+        return False
+    molecule = Chem.MolFromSmiles(smiles)
+    return molecule is not None and any(
+        atom.GetAtomicNum() == 6 for atom in molecule.GetAtoms()
+    )
+
+
+def has_resolved_molecular_identity(row: pd.Series) -> bool:
+    """Reject variable-composition substances represented by a surrogate structure."""
+    name = "" if pd.isna(row.get("chemical_name")) else str(row["chemical_name"]).strip()
+    smiles = "" if pd.isna(row.get("smiles")) else str(row["smiles"]).strip()
+    inchikey = "" if pd.isna(row.get("inchikey")) else str(row["inchikey"]).strip()
+    return bool(inchikey) and "|" not in smiles and not VARIABLE_COMPOSITION_PATTERN.search(name)
 
 
 def build_species_meta(train_df: pd.DataFrame) -> pd.DataFrame:
@@ -143,6 +192,16 @@ def attach_row_flags(rows: pd.DataFrame, species_meta: pd.DataFrame) -> pd.DataF
     flagged["freshwater_keyword_flag"] = flagged["filter_text"].str.contains(FRESHWATER_PATTERN, na=False)
     flagged["marine_species_flag"] = flagged["species_canon"].isin(MARINE_SPECIES)
     flagged["standard_species_flag"] = flagged["species_canon"].isin(STANDARD_SPECIES)
+    flagged["usable_molecular_representation_flag"] = flagged["smiles"].map(
+        has_usable_molecular_representation
+    )
+    flagged["resolved_molecular_identity_flag"] = flagged.apply(
+        has_resolved_molecular_identity,
+        axis=1,
+    )
+    flagged["acceptable_study_record_flag"] = flagged["document_label"].map(
+        is_acceptable_study_record
+    )
 
     meta_keys = set(zip(species_meta["endpoint"], species_meta["species_canon"]))
     flagged["has_train_species_meta"] = flagged.apply(
@@ -151,6 +210,9 @@ def attach_row_flags(rows: pd.DataFrame, species_meta: pd.DataFrame) -> pd.DataF
     )
     flagged["include_main_row"] = (
         flagged["source_log_molar"].notna()
+        & flagged["usable_molecular_representation_flag"]
+        & flagged["resolved_molecular_identity_flag"]
+        & flagged["acceptable_study_record_flag"]
         & flagged["has_train_species_meta"]
         & ~flagged["marine_species_flag"]
         & ~flagged["marine_keyword_flag"]
@@ -164,6 +226,7 @@ def aggregate_case_panel(
     species_meta: pd.DataFrame,
     *,
     panel_name: str,
+    source_prefix: str,
 ) -> pd.DataFrame:
     group_cols = [
         "chemical_id",
@@ -183,6 +246,9 @@ def aggregate_case_panel(
         .agg(
             case_row_count=("target_endpoint", "size"),
             document_count=("document_key", "nunique"),
+            asset_ids=("asset_id", join_unique),
+            document_keys=("document_key", join_unique),
+            document_urls=("document_url", join_unique),
             source_log_molar=("source_log_molar", "median"),
             source_log_molar_min=("source_log_molar", "min"),
             source_log_molar_max=("source_log_molar", "max"),
@@ -212,7 +278,7 @@ def aggregate_case_panel(
     cases["molar_concentration"] = cases["source_value_molar"]
     cases["target_log_molar"] = cases["source_log_molar"]
     cases["study_year"] = np.nan
-    cases["source"] = f"echa_pmra_{panel_name}"
+    cases["source"] = f"{source_prefix}_{panel_name}"
     cases["known_ood"] = False
     cases["is_hard_ood"] = False
     cases["case_id"] = (
@@ -225,10 +291,15 @@ def aggregate_case_panel(
     return cases
 
 
-def attach_mechanism(cases: pd.DataFrame) -> pd.DataFrame:
+def attach_mechanism(
+    cases: pd.DataFrame,
+    *,
+    mechanism_cache: Path,
+    invitrodb_summary: Path,
+) -> pd.DataFrame:
     mechanism = load_or_build_mechanistic_features(
-        cache_path=MECHANISM_CACHE,
-        local_archive=INVITRODB_SUMMARY,
+        cache_path=mechanism_cache,
+        local_archive=invitrodb_summary,
     )
     working = cases.rename(columns={"casrn": "cas_number"}).copy()
     working["dtxsid"] = working["dtxsid"].fillna("").astype(str).str.strip()
@@ -283,6 +354,9 @@ def finalize_columns(cases: pd.DataFrame) -> pd.DataFrame:
         "is_hard_ood",
         "case_row_count",
         "document_count",
+        "asset_ids",
+        "document_keys",
+        "document_urls",
         "case_spread_log_molar",
         "species_canon",
         "regulatory_species",
@@ -310,6 +384,9 @@ def write_summary(
         f"Input exact rows: {len(flagged_rows)}",
         f"Rows with train-species metadata: {int(flagged_rows['has_train_species_meta'].sum())}",
         f"Rows with non-null target_log_molar: {int(flagged_rows['source_log_molar'].notna().sum())}",
+        f"Rows with a usable carbon-containing molecular representation: {int(flagged_rows['usable_molecular_representation_flag'].sum())}",
+        f"Rows with a resolved fixed-composition molecular identity: {int(flagged_rows['resolved_molecular_identity_flag'].sum())}",
+        f"Rows with an accepted experimental-study label: {int(flagged_rows['acceptable_study_record_flag'].sum())}",
         f"Rows excluded by marine keyword/species flag: {int((flagged_rows['marine_keyword_flag'] | flagged_rows['marine_species_flag']).sum())}",
         f"Main panel rows retained: {int(flagged_rows['include_main_row'].sum())}",
         f"Strict panel rows retained: {int(flagged_rows['include_strict_row'].sum())}",
@@ -332,7 +409,7 @@ def main() -> None:
     out_dir = args.output_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    train_df = pd.read_csv(TRAIN_PATH)
+    train_df = pd.read_csv(args.train_path)
     source_rows = pd.read_csv(args.input_path)
     species_meta = build_species_meta(train_df)
     flagged_rows = attach_row_flags(source_rows, species_meta)
@@ -342,11 +419,33 @@ def main() -> None:
     main_rows = flagged_rows.loc[flagged_rows["include_main_row"]].copy()
     strict_rows = flagged_rows.loc[flagged_rows["include_strict_row"]].copy()
 
-    main_cases = aggregate_case_panel(main_rows, species_meta, panel_name="main")
-    strict_cases = aggregate_case_panel(strict_rows, species_meta, panel_name="strict")
+    main_cases = aggregate_case_panel(
+        main_rows,
+        species_meta,
+        panel_name="main",
+        source_prefix=args.source_prefix,
+    )
+    strict_cases = aggregate_case_panel(
+        strict_rows,
+        species_meta,
+        panel_name="strict",
+        source_prefix=args.source_prefix,
+    )
 
-    main_cases = finalize_columns(attach_mechanism(main_cases))
-    strict_cases = finalize_columns(attach_mechanism(strict_cases))
+    main_cases = finalize_columns(
+        attach_mechanism(
+            main_cases,
+            mechanism_cache=args.mechanism_cache,
+            invitrodb_summary=args.invitrodb_summary,
+        )
+    )
+    strict_cases = finalize_columns(
+        attach_mechanism(
+            strict_cases,
+            mechanism_cache=args.mechanism_cache,
+            invitrodb_summary=args.invitrodb_summary,
+        )
+    )
 
     main_cases.to_csv(out_dir / "echa_pmra_case_panel_main.csv", index=False)
     strict_cases.to_csv(out_dir / "echa_pmra_case_panel_strict.csv", index=False)
