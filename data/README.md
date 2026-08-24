@@ -35,6 +35,11 @@ The two external evaluation tables contain derived quantitative records used in
 the manuscript and retain their ECHA source identifiers. They contain no raw
 dossier pages. Both are identity-disjoint from the benchmark by CASRN and
 InChIKey; the seven-species table is a nested subset of the main table.
+External case targets are medians on the `log10(mol L-1)` scale within
+chemical-species-endpoint groups. `molar_concentration` and `toxicity_value`
+are the back-transformed case target, and `toxicity_unit` is `M`; the original
+source value and unit remain available only in the local row-level extraction
+audit.
 The full processed tables can also be rebuilt from local ECOTOX,
 DSSTox/CompTox, invitrodb/ToxCast, ECHA, and PMRA source files with the commands
 in the main [README](../README.md).

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 
@@ -19,9 +20,16 @@ def test_external_evaluation_tables_match_reported_units() -> None:
     assert set(strict["case_id"]).issubset(set(main["case_id"]))
     assert main["case_id"].is_unique
     assert strict["case_id"].is_unique
-    assert main["target_log_molar"].notna().all()
-    assert strict["target_log_molar"].notna().all()
     assert main["document_urls"].fillna("").str.len().gt(0).all()
+    assert strict["document_urls"].fillna("").str.len().gt(0).all()
+    for panel in (main, strict):
+        assert panel["target_log_molar"].notna().all()
+        assert (panel["toxicity_unit"] == "M").all()
+        assert np.allclose(panel["toxicity_value"], panel["molar_concentration"])
+        assert np.allclose(
+            panel["target_log_molar"],
+            np.log10(panel["molar_concentration"]),
+        )
 
 
 def test_external_extension_sample_is_fixed_before_outcome_analysis() -> None:

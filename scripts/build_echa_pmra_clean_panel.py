@@ -253,8 +253,6 @@ def aggregate_case_panel(
             source_log_molar_min=("source_log_molar", "min"),
             source_log_molar_max=("source_log_molar", "max"),
             source_value_molar=("source_value_molar", "median"),
-            toxicity_value=("source_value", "median"),
-            toxicity_unit=("source_unit", mode_or_first),
             duration_h=("duration_h_used", "median"),
             regulatory_species=("regulatory_species", mode_or_first),
             regulatory_taxon=("regulatory_taxon", mode_or_first),
@@ -275,8 +273,13 @@ def aggregate_case_panel(
     cases["structure_source"] = cases["resolution_source"].fillna("").replace("", "unresolved")
     cases["physchem_mol_wt"] = pd.to_numeric(cases["molecular_weight"], errors="coerce")
     cases["physchem_logp"] = pd.to_numeric(cases["logp"], errors="coerce")
-    cases["molar_concentration"] = cases["source_value_molar"]
     cases["target_log_molar"] = cases["source_log_molar"]
+    # The modeled case target is the median on the log10 molar scale. Convert
+    # that aggregate back to molar concentration so all released target columns
+    # describe the same value, including groups with an even number of records.
+    cases["molar_concentration"] = np.power(10.0, cases["target_log_molar"])
+    cases["toxicity_value"] = cases["molar_concentration"]
+    cases["toxicity_unit"] = "M"
     cases["study_year"] = np.nan
     cases["source"] = f"{source_prefix}_{panel_name}"
     cases["known_ood"] = False
