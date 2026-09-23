@@ -43,10 +43,15 @@ def summarize_subset(
     covered = (frame["y_true"] >= frame["interval_lower"]) & (
         frame["y_true"] <= frame["interval_upper"]
     )
+    risk_column = (
+        "prediction_error_risk_score"
+        if "prediction_error_risk_score" in frame.columns
+        else "ecoood_score"
+    )
     _, _, aurc = risk_coverage(
         y_true,
         y_pred,
-        frame["ecoood_score"].to_numpy(dtype=float),
+        frame[risk_column].to_numpy(dtype=float),
     )
     return {
         "seed": seed,

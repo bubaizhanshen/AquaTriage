@@ -27,6 +27,7 @@ EXTERNAL_DATA_FILES = [
     "echa_external_main.csv",
     "echa_external_seven_species.csv",
     "echa_extension_candidates.csv",
+    "ecoood_external_expanded_v1.csv",
 ]
 PREDICTION_COLUMNS = [
     "chemical_id",
@@ -49,11 +50,6 @@ PREDICTION_COLUMNS = [
     "prediction_error_risk_q80",
     "prediction_error_risk_q95",
     "prediction_error_risk_endpoint_balanced",
-    # Compatibility columns retained by older result directories.
-    "ecoood_score",
-    "ecoood_q80",
-    "ecoood_q95",
-    "ecoood_endpoint_balanced",
     "d_chem",
     "d_species",
     "d_context",
@@ -115,6 +111,23 @@ def sha256(path: Path) -> str:
 
 def normalize_release_columns(frame: pd.DataFrame) -> pd.DataFrame:
     # Keep public release tables aligned with the terminology used by the package API.
+    normalized = frame.copy()
+    # Some frozen intermediate tables contain both the current column and its
+    # historical alias. Prefer the current column before applying renaming so
+    # the release cannot contain duplicate headers.
+    compatibility_pairs = {
+        "ecoood_score": "prediction_error_risk_score",
+        "ecoood_q80": "prediction_error_risk_q80",
+        "ecoood_q95": "prediction_error_risk_q95",
+        "ecoood_endpoint_balanced": "prediction_error_risk_endpoint_balanced",
+    }
+    drop_legacy = [
+        legacy
+        for legacy, current in compatibility_pairs.items()
+        if legacy in normalized.columns and current in normalized.columns
+    ]
+    if drop_legacy:
+        normalized = normalized.drop(columns=drop_legacy)
     replacements = {
         "ecoood_score": "prediction_error_risk_score",
         "ecoood_q80": "prediction_error_risk_q80",
@@ -127,12 +140,12 @@ def normalize_release_columns(frame: pd.DataFrame) -> pd.DataFrame:
         "catastrophic_error_rate": "top_decile_error_rate",
     }
     renamed = {}
-    for column in frame.columns:
-        normalized = str(column)
+    for column in normalized.columns:
+        normalized_name = str(column)
         for old, new in replacements.items():
-            normalized = normalized.replace(old, new)
-        renamed[column] = normalized
-    normalized_frame = frame.rename(columns=renamed)
+            normalized_name = normalized_name.replace(old, new)
+        renamed[column] = normalized_name
+    normalized_frame = normalized.rename(columns=renamed)
 
     # Older analysis tables also store internal score names as categorical values.
     # Restrict value normalization to columns that describe methods or score fields.
@@ -263,7 +276,7 @@ def export_predictions(
                 )
                 if not path.exists():
                     raise FileNotFoundError(path)
-                frame = pd.read_csv(path)
+                frame = normalize_release_columns(pd.read_csv(path))
                 columns = [column for column in PREDICTION_COLUMNS if column in frame]
                 frame = frame.loc[:, columns].copy()
                 if "decision" in frame:
@@ -274,7 +287,6 @@ def export_predictions(
                     frame = frame.rename(
                         columns={"d_mech": "d_bioactivity_proxy"}
                     )
-                frame = normalize_release_columns(frame)
                 frame.insert(0, "model", model)
                 frame.insert(0, "split", split)
                 frame.insert(0, "seed", seed)
@@ -316,12 +328,14 @@ assignments, compact case-level predictions, and statistical audit tables.
 
 ## Contents
 
-- `data/EcoOOD_benchmark_snapshot_structured.csv`: reference scoreable benchmark
+- `data/EcoOOD_benchmark_snapshot_structured.csv`: intermediate curation snapshot used only for the record-level audit
 - `data/feature_manifest.csv`: predictor roles, cardinalities, and missingness
 - `data/curated_data_flow_summary.csv`: scoreable and rejected record counts
-- `data/echa_external_main.csv`: 100-case external ECHA evaluation set
-- `data/echa_external_seven_species.csv`: nested seven-species sensitivity set
-- `data/echa_extension_candidates.csv`: fixed identity-only extension sample
+- `data/echa_external_main.csv`: historical 100-case ECHA evaluation set
+- `data/echa_external_seven_species.csv`: historical nested seven-species set
+- `data/ecoood_external_expanded_v1.csv`: current 1,027-case, 441-chemical
+  identity-disjoint external panel derived from ECHA/REACH and Japanese MOE
+- `data/echa_extension_candidates.csv`: identity-only extension sample
 - `data/split_assignments.csv`: train, calibration, and test assignments
 - `predictions/predictions_core.csv`: compact case-level model and reliability outputs
 - `tables/`: benchmark, fixed-workload, sensitivity, reference-fold, and

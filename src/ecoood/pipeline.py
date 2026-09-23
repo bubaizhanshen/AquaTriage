@@ -16,7 +16,7 @@ from .conformal import (
 from .evaluation import interval_metrics, ood_metrics, reference_ood_metrics, regression_metrics, save_metrics, save_predictions, score_method_metrics
 from .features import EcoFeatureBuilder, attach_rdkit_descriptors
 from .models import BootstrapEnsembleRegressor
-from .ood import CalibrationRiskScorer, EcoOODScorer, calibration_meta_bootstrap
+from .ood import CalibrationRiskScorer, PredictionErrorRiskScorer, calibration_meta_bootstrap
 from .schema import DEFAULT_SCHEMA, EcoOODSchema
 from .splits import SplitIndices, build_split
 
@@ -136,7 +136,7 @@ def run_single_experiment(
         scale=np.maximum(test_pred.std, 1e-3),
     )
 
-    scorer = EcoOODScorer(
+    scorer = PredictionErrorRiskScorer(
         schema=schema,
         component_mode=config.reliability_component_mode,
         n_neighbors=config.reliability_n_neighbors,
@@ -184,7 +184,7 @@ def run_single_experiment(
         model_std=calib_pred.std,
         interval_width=calib_interval.width,
     )
-    calib_ecoood_score = scorer.score_components(calib_components)
+    calib_prediction_error_risk_score = scorer.score_components(calib_components)
 
     ad_scorer = ApplicabilityDomainScorer().fit(
         train_bundle,
@@ -269,7 +269,7 @@ def run_single_experiment(
             "prediction_error_risk_tanimoto_k10": ("revised", 10, "tanimoto"),
         }
         for name, (mode, neighbors, fingerprint_metric) in distance_variants.items():
-            variant_scorer = EcoOODScorer(
+            variant_scorer = PredictionErrorRiskScorer(
                 schema=schema,
                 component_mode=mode,
                 n_neighbors=neighbors,
@@ -308,7 +308,7 @@ def run_single_experiment(
         calib_components,
         calibration_directional_miss,
     )
-    calibrated_score_specs["ecoood_directional_miss_risk"] = (
+    calibrated_score_specs["prediction_error_risk_directional_miss"] = (
         directional_scorer.predict(calib_components),
         directional_scorer.predict(test_component_frame),
     )
@@ -320,7 +320,7 @@ def run_single_experiment(
             calib_components.drop(columns=columns),
             calib_residuals,
         )
-        calibrated_score_specs[f"ecoood_minus_{axis}"] = (
+        calibrated_score_specs[f"prediction_error_risk_minus_{axis}"] = (
             risk_scorer.predict(calib_components.drop(columns=columns)),
             risk_scorer.predict(test_component_frame.drop(columns=columns)),
         )
@@ -335,7 +335,7 @@ def run_single_experiment(
             calib_components.loc[:, retained_columns],
             calib_residuals,
         )
-        calibrated_score_specs[f"ecoood_minus_component_{component}"] = (
+        calibrated_score_specs[f"prediction_error_risk_minus_component_{component}"] = (
             risk_scorer.predict(calib_components.loc[:, retained_columns]),
             risk_scorer.predict(test_component_frame.loc[:, retained_columns]),
         )
@@ -343,7 +343,7 @@ def run_single_experiment(
     for quantile in config.high_error_quantile_sensitivity:
         if np.isclose(quantile, config.high_error_quantile):
             continue
-        sensitivity_scorer = EcoOODScorer(
+        sensitivity_scorer = PredictionErrorRiskScorer(
             schema=schema,
             component_mode=config.reliability_component_mode,
             n_neighbors=config.reliability_n_neighbors,
@@ -355,12 +355,12 @@ def run_single_experiment(
             residuals=calib_residuals,
             high_error_quantile=quantile,
         )
-        calibrated_score_specs[f"ecoood_q{int(round(quantile * 100)):02d}"] = (
+        calibrated_score_specs[f"prediction_error_risk_q{int(round(quantile * 100)):02d}"] = (
             sensitivity_scorer.score_components(calib_components),
             sensitivity_scorer.score_components(test_component_frame),
         )
 
-    endpoint_balanced_scorer = EcoOODScorer(
+    endpoint_balanced_scorer = PredictionErrorRiskScorer(
         schema=schema,
         component_mode=config.reliability_component_mode,
         n_neighbors=config.reliability_n_neighbors,
@@ -375,15 +375,15 @@ def run_single_experiment(
         groupwise_labels=True,
         balance_groups=True,
     )
-    calibrated_score_specs["ecoood_endpoint_balanced"] = (
+    calibrated_score_specs["prediction_error_risk_endpoint_balanced"] = (
         endpoint_balanced_scorer.score_components(calib_components),
         endpoint_balanced_scorer.score_components(test_component_frame),
     )
 
-    score_warn = float(np.quantile(calib_ecoood_score, 0.5))
-    score_abstain = float(np.quantile(calib_ecoood_score, 0.85))
+    score_warn = float(np.quantile(calib_prediction_error_risk_score, 0.5))
+    score_abstain = float(np.quantile(calib_prediction_error_risk_score, 0.85))
     decisions = decision_labels(
-        test_components.ecoood_score,
+        test_components.prediction_error_risk_score,
         None,
         score_warn_threshold=score_warn,
         score_abstain_threshold=score_abstain,
@@ -413,7 +413,7 @@ def run_single_experiment(
             test_interval.lower,
             test_interval.upper,
             uncertainty=test_pred.std,
-            novelty=test_components.ecoood_score,
+            novelty=test_components.prediction_error_risk_score,
         ),
         **{
             f"endpoint_conditional_{key}": value
@@ -422,18 +422,18 @@ def run_single_experiment(
                 endpoint_test_interval.lower,
                 endpoint_test_interval.upper,
                 uncertainty=test_pred.std,
-                novelty=test_components.ecoood_score,
+                novelty=test_components.prediction_error_risk_score,
             ).items()
         },
         **ood_metrics(
             y_test,
             test_pred.mean,
-            test_components.ecoood_score,
+            test_components.prediction_error_risk_score,
             known_ood,
         ),
         **reference_ood_metrics(
-            id_scores=calib_components_pred.ecoood_score,
-            ood_scores=test_components.ecoood_score if np.any(split_indices.test_is_ood) else np.array([]),
+            id_scores=calib_components_pred.prediction_error_risk_score,
+            ood_scores=test_components.prediction_error_risk_score if np.any(split_indices.test_is_ood) else np.array([]),
         ),
         "predict_fraction": float(np.mean(decisions == "predict")),
         "warn_fraction": float(np.mean(decisions == "warn")),
@@ -460,8 +460,22 @@ def run_single_experiment(
             for name, value in ad_scorer.equal_block_scale_by_name.items()
         },
         **calibration_endpoint_metrics,
-        **{f"ecoood_{key}": value for key, value in scorer.diagnostics().items()},
+        **{
+            f"prediction_error_risk_{key}": value
+            for key, value in scorer.diagnostics().items()
+        },
     }
+    if config.model_name == "mlp":
+        member_n_iter = np.asarray(model.member_n_iter_, dtype=float)
+        metrics.update(
+            {
+                "mlp_member_n_iter_mean": float(member_n_iter.mean()),
+                "mlp_member_n_iter_max": int(member_n_iter.max()),
+                "mlp_member_early_stopped_fraction": float(
+                    np.mean(model.member_early_stopped_)
+                ),
+            }
+        )
 
     predictions = test_df.copy()
     predictions["y_true"] = y_test
@@ -473,10 +487,7 @@ def run_single_experiment(
     predictions["endpoint_interval_lower"] = endpoint_test_interval.lower
     predictions["endpoint_interval_upper"] = endpoint_test_interval.upper
     predictions["endpoint_interval_width"] = endpoint_test_interval.width
-    predictions["prediction_error_risk_score"] = test_components.ecoood_score
-    # Compatibility alias for analysis tables produced before the public name
-    # distinguished this candidate score from the EcoOOD framework.
-    predictions["ecoood_score"] = test_components.ecoood_score
+    predictions["prediction_error_risk_score"] = test_components.prediction_error_risk_score
     predictions["d_chem"] = test_components.chemical
     predictions["d_species"] = test_components.species
     predictions["d_context"] = test_components.context
@@ -500,12 +511,15 @@ def run_single_experiment(
     for name, (_, test_score) in calibrated_score_specs.items():
         predictions[name] = test_score
     predictions["direction_aligned_risk_score"] = predictions[
-        "ecoood_directional_miss_risk"
+        "prediction_error_risk_directional_miss"
     ]
 
     score_rows = []
     score_specs = {
-        "ecoood": (calib_ecoood_score, test_components.ecoood_score),
+        "prediction_error_risk": (
+            calib_prediction_error_risk_score,
+            test_components.prediction_error_risk_score,
+        ),
         "ad_similarity": (calib_ad.similarity, test_ad.similarity),
         "ad_leverage": (calib_ad.leverage, test_ad.leverage),
         "ad_range": (calib_ad.descriptor_range, test_ad.descriptor_range),

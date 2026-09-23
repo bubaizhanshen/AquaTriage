@@ -28,7 +28,7 @@ def test_benchmark_smoke(tmp_path: Path) -> None:
         tmp_path / "results" / "random" / "random_forest" / "predictions.csv"
     )
     expected_component_ablations = {
-        f"ecoood_minus_component_{component}"
+        f"prediction_error_risk_minus_component_{component}"
         for component in (
             "d_chem_knn",
             "d_chem_mahal",

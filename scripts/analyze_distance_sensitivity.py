@@ -16,31 +16,14 @@ from ecoood.splits import build_split
 SPLITS = ("chemical_random", "scaffold", "temporal", "species", "chemical_class")
 PRIMARY_FOR_SPLITS = SPLITS[:4]
 METHODS = {
-    "revised_tanimoto_k5": ("ecoood", "ecoood_score"),
+    "revised_tanimoto_k5": (
+        "ecoood",
+        "ecoood_score",
+    ),
     "legacy": ("prediction_error_risk_legacy", "prediction_error_risk_legacy"),
-    "revised_cosine_k5": (
-        "prediction_error_risk_cosine_k5",
-        "prediction_error_risk_cosine_k5",
-    ),
-    "revised_tanimoto_k1": (
-        "prediction_error_risk_tanimoto_k1",
-        "prediction_error_risk_tanimoto_k1",
-    ),
-    "revised_tanimoto_k3": (
-        "prediction_error_risk_tanimoto_k3",
-        "prediction_error_risk_tanimoto_k3",
-    ),
-    "revised_tanimoto_k10": (
-        "prediction_error_risk_tanimoto_k10",
-        "prediction_error_risk_tanimoto_k10",
-    ),
     "block_normalized_knn": (
         "ad_equal_block_distance",
         "ad_equal_block_distance",
-    ),
-    "block_normalized_knn_distinct_chemical": (
-        "ad_equal_block_distance_distinct_chemical",
-        "ad_equal_block_distance_distinct_chemical",
     ),
     "input_space_knn": ("ad_distance_to_model", "ad_distance_to_model"),
     "similarity_ad": ("ad_similarity", "ad_similarity"),
@@ -135,12 +118,18 @@ def main() -> None:
             predictions = pd.read_csv(result_dir / "predictions.csv", low_memory=False)
             split = build_split(data, split_name, schema=DEFAULT_SCHEMA, seed=seed)
             cutoffs = calibration_cutoffs(data.loc[split.calib])
+            available_methods = {
+                label: (score_method, prediction_column)
+                for label, (score_method, prediction_column) in METHODS.items()
+                if score_method in score_summary.index and prediction_column in predictions.columns
+            }
+            available_columns = [column for _, column in available_methods.values()]
             panel = (
-                chemical_panel(predictions, cutoffs, score_columns)
-                if split_name in PRIMARY_FOR_SPLITS
+                chemical_panel(predictions, cutoffs, available_columns)
+                if split_name in PRIMARY_FOR_SPLITS and available_columns
                 else None
             )
-            for label, (score_method, prediction_column) in METHODS.items():
+            for label, (score_method, prediction_column) in available_methods.items():
                 rows.append(
                     {
                         "seed": seed,

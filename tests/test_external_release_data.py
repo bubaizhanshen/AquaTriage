@@ -43,3 +43,27 @@ def test_external_extension_sample_is_fixed_before_outcome_analysis() -> None:
     assert not {"toxicity_value", "target_log_molar", "prediction"}.intersection(
         candidates.columns
     )
+
+
+def test_expanded_external_panel_matches_current_public_snapshot() -> None:
+    panel = pd.read_csv(
+        ROOT / "data" / "processed" / "ecoood_external_expanded_v1.csv"
+    )
+
+    assert len(panel) == 1027
+    assert panel["chemical_id"].nunique() == 441
+    assert panel["case_id"].is_unique
+    assert set(panel["source"]) == {
+        "echa_extension_main",
+        "echa_pmra_main",
+        "japan_moe_official_summary",
+    }
+    echa_mask = panel["source"].isin({"echa_extension_main", "echa_pmra_main"})
+    assert panel.loc[echa_mask, "document_urls"].fillna("").str.len().gt(0).all()
+    assert panel["target_log_molar"].notna().all()
+    assert set(panel["toxicity_unit"]) == {"M", "mg/L"}
+    assert panel["molar_concentration"].notna().all()
+    assert np.allclose(
+        panel["target_log_molar"],
+        np.log10(panel["molar_concentration"]),
+    )

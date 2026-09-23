@@ -25,5 +25,5 @@ def test_external_chemical_level_uses_fixed_chemical_counts() -> None:
     assert (result["n_chemicals"] == 15).all()
     assert (result["review_n"] == 4).all()
     assert (result["high_error_n"] == 2).all()
-    assert result.loc["ecoood", "high_error_capture_rate"] == 1.0
+    assert result.loc["prediction_error_risk", "high_error_capture_rate"] == 1.0
     assert result.loc["similarity_ad_risk", "high_error_capture_rate"] == 0.0

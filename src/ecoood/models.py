@@ -107,6 +107,8 @@ class BootstrapEnsembleRegressor:
         self.n_jobs = n_jobs
         self.estimator_params = dict(estimator_params or {})
         self.members = []
+        self.member_n_iter_: list[int] = []
+        self.member_early_stopped_: list[bool] = []
 
     def _prepare_matrix(self, X):
         if self.model_name == "mlp" and sparse is not None and sparse.issparse(X):
@@ -132,6 +134,21 @@ class BootstrapEnsembleRegressor:
             delayed(_fit_member)(int(member_seed), sample_idx)
             for member_seed, sample_idx in zip(seeds, bootstrap_indices, strict=False)
         )
+        self.member_n_iter_ = [
+            int(getattr(member, "n_iter_", 0)) for member in self.members
+        ]
+        self.member_early_stopped_ = [
+            bool(
+                self.model_name == "mlp"
+                and n_iter < int(
+                    self.estimator_params.get(
+                        "max_iter",
+                        300,
+                    )
+                )
+            )
+            for n_iter in self.member_n_iter_
+        ]
         return self
 
     def predict(self, X) -> PredictionResult:

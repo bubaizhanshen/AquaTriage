@@ -39,11 +39,20 @@ data/processed/*
 !data/processed/echa_external_main.csv
 !data/processed/echa_external_seven_species.csv
 !data/processed/echa_extension_candidates.csv
+!data/processed/ecoood_external_expanded_v1.csv
 data/processed/invitrodb_mechanism_features.csv
 !data/README.md
 
+# NSS/LibreOffice profile artifact when a local renderer is invoked
+secmod.db
+
 # Local writing, review, and presentation working copies
 manuscript/
+src/ecoood/plotting.py
+scripts/*plot*.py
+scripts/*figure*.py
+scripts/*graphic*.py
+scripts/*draw*.py
 scripts/*docx*.py
 scripts/*word*.py
 scripts/*ppt*.py
@@ -61,6 +70,7 @@ scripts/apply_*.py
 !scripts/apply_ecoood.py
 scripts/assemble_*.py
 scripts/audit_*.py
+!scripts/audit_matched_queue_protocol.py
 !scripts/audit_benchmark_integrity.py
 !scripts/audit_deterministic_rejections.py
 !scripts/audit_species_chemical_overlap.py

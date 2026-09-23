@@ -11,7 +11,7 @@ from ecoood.conformal import ScaledConformalRegressor
 from ecoood.evaluation import interval_metrics, ood_metrics
 from ecoood.features import EcoFeatureBuilder, FeatureBundle, attach_rdkit_descriptors
 from ecoood.models import BootstrapEnsembleRegressor
-from ecoood.ood import EcoOODScorer
+from ecoood.ood import PredictionErrorRiskScorer
 from ecoood.schema import DEFAULT_SCHEMA, EcoOODSchema
 from ecoood.splits import SplitIndices, build_split
 
@@ -31,7 +31,7 @@ class SplitFit:
     base_interval_lower: np.ndarray
     base_interval_upper: np.ndarray
     base_interval_width: np.ndarray
-    base_ecoood_score: np.ndarray
+    base_prediction_error_risk_score: np.ndarray
 
 
 def _select(df: pd.DataFrame, idx: np.ndarray) -> pd.DataFrame:
@@ -128,7 +128,7 @@ def _fit_split(
     )
     base_interval = conformal.predict(test_pred.mean, scale=np.maximum(test_pred.std, 1e-3))
 
-    scorer = EcoOODScorer(schema=schema).fit(train_df, train_bundle)
+    scorer = PredictionErrorRiskScorer(schema=schema).fit(train_df, train_bundle)
     calib_components = scorer.component_frame(
         calib_df,
         calib_bundle,
@@ -160,7 +160,7 @@ def _fit_split(
         base_interval_lower=base_interval.lower,
         base_interval_upper=base_interval.upper,
         base_interval_width=base_interval.width,
-        base_ecoood_score=test_components.ecoood_score,
+        base_prediction_error_risk_score=test_components.prediction_error_risk_score,
     )
 
 
@@ -201,8 +201,8 @@ def _recalibrated_score(
     min_score_refit_records: int,
 ) -> np.ndarray:
     if len(adapt_idx) < min_score_refit_records:
-        return fit.base_ecoood_score[eval_idx]
-    local_scorer = EcoOODScorer(schema=schema).fit(fit.train_df, fit.train_bundle)
+        return fit.base_prediction_error_risk_score[eval_idx]
+    local_scorer = PredictionErrorRiskScorer(schema=schema).fit(fit.train_df, fit.train_bundle)
     adapt_df = fit.test_df.iloc[adapt_idx].reset_index(drop=True)
     adapt_bundle = _slice_bundle(fit.test_bundle, adapt_idx)
     adapt_components = local_scorer.component_frame(
@@ -224,7 +224,7 @@ def _recalibrated_score(
         model_std=fit.model_std_test[eval_idx],
         interval_width=eval_interval_width,
     )
-    return eval_components.ecoood_score
+    return eval_components.prediction_error_risk_score
 
 
 def _aggregate_results(frame: pd.DataFrame) -> pd.DataFrame:
@@ -318,7 +318,7 @@ def main() -> None:
                             model_std=fit.model_std_test[eval_idx],
                             lower=fit.base_interval_lower[eval_idx],
                             upper=fit.base_interval_upper[eval_idx],
-                            score=fit.base_ecoood_score[eval_idx],
+                            score=fit.base_prediction_error_risk_score[eval_idx],
                             known_ood=known_ood[eval_idx],
                         )
 
@@ -326,7 +326,7 @@ def main() -> None:
                             recal_lower = fit.base_interval_lower[eval_idx]
                             recal_upper = fit.base_interval_upper[eval_idx]
                             recal_width = fit.base_interval_width[eval_idx]
-                            recal_score = fit.base_ecoood_score[eval_idx]
+                            recal_score = fit.base_prediction_error_risk_score[eval_idx]
                         else:
                             conformal = ScaledConformalRegressor(alpha=args.alpha).fit(
                                 fit.y_test[adapt_idx],
@@ -356,7 +356,7 @@ def main() -> None:
                                     min_score_refit_records=args.min_score_refit_records,
                                 )
                                 if args.refit_score
-                                else fit.base_ecoood_score[eval_idx]
+                                else fit.base_prediction_error_risk_score[eval_idx]
                             )
 
                         recal_metrics = _evaluate_subset(

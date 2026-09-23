@@ -19,7 +19,7 @@ def test_fixed_workload_compares_methods_at_identical_review_count() -> None:
             "chemical_class": ["test"] * 8,
             "min_true_tox": [-8.0, -7.5, -7.0, -6.5, -6.0, -5.5, -5.0, -4.5],
             "min_pred_tox": [-5.0, -5.1, -7.1, -6.6, -6.0, -5.5, -5.0, -4.5],
-            "max_ecoood": [0.99, 0.98, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
+            "max_prediction_error_risk_score": [0.99, 0.98, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
             "max_input_distance": [0.1, 0.2, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4],
             "max_similarity_risk": [0.2, 0.1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4],
             "endpoint_breadth": [1] * 8,

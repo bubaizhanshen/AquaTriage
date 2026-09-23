@@ -47,3 +47,20 @@ def test_echa_candidate_selection_supports_direct_cli_execution() -> None:
 
     assert result.returncode == 0, result.stderr
     assert "endpoint availability" in result.stdout.lower()
+
+
+def test_external_deployment_selection_supports_direct_cli_execution() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/analyze_external_deployment_selection.py",
+            "--help",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "external screening queue" in result.stdout.lower()

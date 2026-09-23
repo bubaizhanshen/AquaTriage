@@ -12,7 +12,7 @@ from ecoood.conformal import ScaledConformalRegressor
 from ecoood.evaluation import ood_metrics, regression_metrics
 from ecoood.features import EcoFeatureBuilder, attach_rdkit_descriptors
 from ecoood.models import BootstrapEnsembleRegressor
-from ecoood.ood import CalibrationRiskScorer, EcoOODScorer
+from ecoood.ood import CalibrationRiskScorer, PredictionErrorRiskScorer
 from ecoood.schema import DEFAULT_SCHEMA
 from scripts.audit_benchmark_integrity import strict_input_eligibility_audit
 
@@ -27,14 +27,22 @@ DEFAULT_PANEL_PATH = (
     / "external_regulatory_prep"
     / "echa_external_main.csv"
 )
-PUBLIC_PANEL_PATH = ROOT / "data" / "processed" / "echa_external_main.csv"
+EXPANDED_PUBLIC_PANEL_PATH = (
+    ROOT / "data" / "processed" / "ecoood_external_expanded_v1.csv"
+)
+HISTORICAL_PUBLIC_PANEL_PATH = ROOT / "data" / "processed" / "echa_external_main.csv"
+PUBLIC_PANEL_PATH = (
+    EXPANDED_PUBLIC_PANEL_PATH
+    if EXPANDED_PUBLIC_PANEL_PATH.exists()
+    else HISTORICAL_PUBLIC_PANEL_PATH
+)
 DEFAULT_OUT_DIR = ROOT / "results" / "echa_pmra_external_validation_main"
 MODEL_NAME = "lightgbm"
 DEFAULT_SEEDS = [40, 41, 42, 43, 44]
 REVIEW_FRACTION = 0.25
 RELIABILITY_METHODS = {
-    "ecoood": "ecoood_score",
-    "ecoood_endpoint_balanced": "ecoood_endpoint_balanced",
+    "prediction_error_risk": "prediction_error_risk_score",
+    "prediction_error_risk_endpoint_balanced": "prediction_error_risk_endpoint_balanced",
     "ensemble_sd_risk": "ensemble_sd_risk",
     "input_space_knn_plus_sd_risk": "input_space_knn_plus_sd_risk",
     "equal_block_knn_plus_sd_risk": "equal_block_knn_plus_sd_risk",
@@ -271,6 +279,46 @@ def chemical_identity_overlap_audit(train_df: pd.DataFrame, panel: pd.DataFrame)
     return pd.DataFrame(rows)
 
 
+def align_external_input_columns(
+    train_df: pd.DataFrame,
+    panel: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Align an external panel to the training schema without inventing measurements.
+
+    External source panels may not provide the benchmark's bioactivity or
+    context fields. Those columns are added as missing values and are then
+    handled by the feature builder's training-partition imputers. Core identity,
+    structure, endpoint, species, and target fields remain mandatory.
+    """
+    required = [
+        "chemical_id",
+        "chemical_name",
+        "casrn",
+        "smiles",
+        "endpoint",
+        "species",
+        "target_log_molar",
+    ]
+    missing_required = [column for column in required if column not in panel.columns]
+    if missing_required:
+        raise ValueError(
+            "External panel is missing mandatory fields: "
+            + ", ".join(missing_required)
+        )
+
+    aligned = panel.copy()
+    missing_columns = [column for column in train_df.columns if column not in aligned.columns]
+    for column in missing_columns:
+        aligned[column] = np.nan
+    audit = pd.DataFrame(
+        {
+            "column": missing_columns,
+            "action": "added_as_missing_and_training_partition_imputed",
+        }
+    )
+    return aligned, audit
+
+
 def chemical_cluster_bootstrap(
     frame: pd.DataFrame,
     *,
@@ -308,13 +356,17 @@ def main() -> None:
         analysis_train_df = source_train_df
     else:
         analysis_train_df, _ = strict_input_eligibility_audit(source_train_df)
+    raw_panel = pd.read_csv(args.panel_path)
+    panel, panel_schema_audit = align_external_input_columns(source_train_df, raw_panel)
+    panel_schema_audit.to_csv(out_dir / "external_panel_schema_alignment.csv", index=False)
+
     train_df = attach_rdkit_descriptors(
         analysis_train_df,
         DEFAULT_SCHEMA,
         recompute_logp=recompute_logp,
     )
     panel = attach_rdkit_descriptors(
-        pd.read_csv(args.panel_path),
+        panel,
         DEFAULT_SCHEMA,
         recompute_logp=recompute_logp,
     )
@@ -359,7 +411,7 @@ def main() -> None:
         calib_interval = conformal.predict(calib_pred.mean, scale=np.maximum(calib_pred.std, 1e-3))
         external_interval = conformal.predict(external_pred.mean, scale=np.maximum(external_pred.std, 1e-3))
 
-        scorer = EcoOODScorer(
+        scorer = PredictionErrorRiskScorer(
             schema=DEFAULT_SCHEMA,
             include_study_year=args.include_study_year,
         ).fit(train_seed_df, train_bundle)
@@ -377,7 +429,7 @@ def main() -> None:
             external_bundle,
             model_std=external_pred.std,
         )
-        endpoint_balanced_scorer = EcoOODScorer(
+        endpoint_balanced_scorer = PredictionErrorRiskScorer(
             schema=DEFAULT_SCHEMA,
             include_study_year=args.include_study_year,
         ).fit(
@@ -464,13 +516,13 @@ def main() -> None:
         pred["abs_error"] = np.abs(pred["y_pred"] - pred["target_log_molar"])
         pred["model_std"] = external_pred.std
         pred["interval_width"] = external_interval.width
-        pred["ecoood_score"] = external_components.ecoood_score
+        pred["prediction_error_risk_score"] = external_components.prediction_error_risk_score
         external_component_frame = scorer.component_frame(
             panel,
             external_bundle,
             model_std=external_pred.std,
         )
-        pred["ecoood_endpoint_balanced"] = (
+        pred["prediction_error_risk_endpoint_balanced"] = (
             endpoint_balanced_scorer.score_components(external_component_frame)
         )
         pred["ensemble_sd_risk"] = ensemble_sd_risk.predict(
@@ -568,7 +620,7 @@ def main() -> None:
             y_pred_std=("y_pred", "std"),
             abs_error_mean=("abs_error", "mean"),
             abs_error_std=("abs_error", "std"),
-            ecoood_score_mean=("ecoood_score", "mean"),
+            prediction_error_risk_score_mean=("prediction_error_risk_score", "mean"),
             distance_to_model_mean=("ad_distance_to_model", "mean"),
             similarity_risk_mean=("ad_similarity_risk", "mean"),
         )

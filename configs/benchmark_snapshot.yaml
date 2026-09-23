@@ -1,4 +1,5 @@
-dataset_label: EcoOOD audited benchmark snapshot
+dataset_label: EcoOOD intermediate curation audit snapshot
+benchmark_role: audit_only
 n_records: 4942
 n_chemicals: 841
 sha256: 1e83dcc8f6b8086dcb1609a6f9f7e1a98634aff85692d910774f4f603a17461e

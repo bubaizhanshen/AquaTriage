@@ -470,7 +470,7 @@ class OODComponents:
     context: np.ndarray
     mechanism: np.ndarray
     model_uncertainty: np.ndarray
-    ecoood_score: np.ndarray
+    prediction_error_risk_score: np.ndarray
 
 
 class CalibrationRiskScorer:
@@ -536,7 +536,7 @@ class CalibrationRiskScorer:
         return np.full(len(features), self.positive_rate_, dtype=float)
 
 
-class EcoOODScorer:
+class PredictionErrorRiskScorer:
     def __init__(
         self,
         schema: EcoOODSchema = DEFAULT_SCHEMA,
@@ -571,7 +571,7 @@ class EcoOODScorer:
         self.calibration_count_: int = 0
         self.converged_: bool = True
 
-    def fit(self, train_df: pd.DataFrame, train_bundle: FeatureBundle) -> "EcoOODScorer":
+    def fit(self, train_df: pd.DataFrame, train_bundle: FeatureBundle) -> "PredictionErrorRiskScorer":
         self.train_df = train_df.copy()
         self.train_bundle = train_bundle
         if self.component_mode == "revised":
@@ -589,7 +589,7 @@ class EcoOODScorer:
         interval_width: np.ndarray | None = None,
     ) -> pd.DataFrame:
         if self.train_df is None or self.train_bundle is None:
-            raise RuntimeError("EcoOODScorer must be fit before use.")
+            raise RuntimeError("PredictionErrorRiskScorer must be fit before use.")
         train_bundle = self.train_bundle
         if self.component_mode == "legacy":
             chem_knn = _mean_knn_distance(
@@ -683,7 +683,7 @@ class EcoOODScorer:
         groups: pd.Series | np.ndarray | None = None,
         groupwise_labels: bool = False,
         balance_groups: bool = False,
-    ) -> "EcoOODScorer":
+    ) -> "PredictionErrorRiskScorer":
         labels, threshold, group_thresholds = _high_error_labels(
             residuals,
             high_error_quantile,
@@ -714,7 +714,7 @@ class EcoOODScorer:
 
     def scaled_axis_frame(self, components: pd.DataFrame) -> pd.DataFrame:
         if not hasattr(self.component_scaler, "n_features_in_"):
-            raise RuntimeError("EcoOODScorer meta-model must be fit before axis scaling.")
+            raise RuntimeError("PredictionErrorRiskScorer meta-model must be fit before axis scaling.")
         scaled = pd.DataFrame(
             self.component_scaler.transform(components),
             columns=components.columns,
@@ -757,7 +757,7 @@ class EcoOODScorer:
 
     def score_components(self, components: pd.DataFrame) -> np.ndarray:
         if not hasattr(self.component_scaler, "n_features_in_"):
-            raise RuntimeError("EcoOODScorer meta-model must be fit before scoring.")
+            raise RuntimeError("PredictionErrorRiskScorer meta-model must be fit before scoring.")
         scaled = self.component_scaler.transform(components)
         if self.meta_model is not None:
             return self.meta_model.predict_proba(scaled)[:, 1]
@@ -771,7 +771,7 @@ class EcoOODScorer:
         interval_width: np.ndarray | None = None,
     ) -> OODComponents:
         components = self.component_frame(df, bundle, model_std=model_std, interval_width=interval_width)
-        ecoood_score = self.score_components(components)
+        prediction_error_risk_score = self.score_components(components)
         axes = self.scaled_axis_frame(components)
         return OODComponents(
             chemical=axes["chemical"].to_numpy(),
@@ -779,5 +779,5 @@ class EcoOODScorer:
             context=axes["contextual"].to_numpy(),
             mechanism=axes["bioactivity"].to_numpy(),
             model_uncertainty=axes["uncertainty"].to_numpy(),
-            ecoood_score=np.asarray(ecoood_score, dtype=float),
+            prediction_error_risk_score=np.asarray(prediction_error_risk_score, dtype=float),
         )

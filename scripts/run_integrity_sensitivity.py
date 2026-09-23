@@ -25,7 +25,11 @@ def make_missingness_only_frame(df: pd.DataFrame) -> pd.DataFrame:
         if column in df.columns:
             result[column] = df[column]
 
-    result[schema.smiles] = ""
+    # The current pipeline rejects missing or unparseable structures before
+    # feature construction.  Use one fixed, parseable placeholder so this
+    # negative control tests whether missingness indicators alone carry signal
+    # without bypassing the same molecular-input gate.
+    result[schema.smiles] = "C"
     for column in [
         schema.endpoint,
         schema.species,
@@ -118,10 +122,15 @@ def build_profiles(data: pd.DataFrame) -> dict[str, pd.DataFrame]:
 
 
 def summarize(frame: pd.DataFrame) -> pd.DataFrame:
+    # Keep the profile/sample identifiers out of the aggregate and select
+    # numeric metric columns explicitly.  Some model wrappers return string
+    # metadata (for example, a model label or a revision tag) alongside the
+    # numeric metrics; those fields are not audit measurements.
+    excluded = {"profile", "seed", "split", "model", "permuted_training_targets"}
     value_cols = [
         column
         for column in frame.columns
-        if column not in {"profile", "seed", "split", "model", "permuted_training_targets"}
+        if column not in excluded and pd.api.types.is_numeric_dtype(frame[column])
     ]
     summary = frame.groupby("profile", as_index=False)[value_cols].agg(["mean", "std"]).reset_index()
     summary.columns = [

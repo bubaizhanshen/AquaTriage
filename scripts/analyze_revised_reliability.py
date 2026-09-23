@@ -12,7 +12,7 @@ import pandas as pd
 
 SPLITS = ("chemical_random", "scaffold", "temporal", "species", "chemical_class")
 METHOD_COLUMNS = {
-    "Prediction-error risk score": "ecoood_score",
+    "Prediction-error risk score": "prediction_error_risk_score",
     "Ensemble-SD risk": "ensemble_sd_risk",
     "Block-normalized kNN + SD risk": "equal_block_knn_plus_sd_risk",
     "Distinct-chemical block-normalized kNN distance": (

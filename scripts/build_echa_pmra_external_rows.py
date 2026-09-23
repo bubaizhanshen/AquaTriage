@@ -260,7 +260,10 @@ def section_anchor_documents(index_html: str, section_id: str) -> list[dict[str,
                 "document_key": href,
                 "label": label,
                 "icon_marker": icon_marker,
-                "is_study_record": "icon-ENDPOINT_STUDY_RECORD" in icon_marker,
+                "is_study_record": (
+                    "icon-ENDPOINT_STUDY_RECORD" in icon_marker
+                    or (not icon_marker and bool(re.match(r"^\d+\s*\|", label)))
+                ),
             }
         )
     return docs
@@ -289,11 +292,26 @@ def first_nonempty(fields: list[tuple[str, str]], labels: list[str]) -> str:
     return ""
 
 
+def linked_field_documents(document_html: str, field_label: str) -> list[str]:
+    """Keep reference/material links: their content is not inline in study pages."""
+    soup = BeautifulSoup(document_html, "html.parser")
+    keys = set()
+    for field in soup.select('.das-field'):
+        label = field.select_one('.das-field_label')
+        if label is None or label.get_text(' ', strip=True).casefold() != field_label.casefold():
+            continue
+        for link in field.select('a.das-field_reference-link[href]'):
+            key = link['href'].strip()
+            if re.fullmatch(r'[A-Za-z0-9_-]+', key):
+                keys.add(key)
+    return sorted(keys)
+
+
 def parse_duration_hours(text: str) -> float | None:
-    match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*h\b", text.lower())
+    match = re.fullmatch(r"\s*([0-9]+(?:\.[0-9]+)?)\s*(h|hours?|d|days?)\s*", text.lower())
     if not match:
         return None
-    return float(match.group(1))
+    return float(match.group(1)) * (24 if match.group(2).startswith('d') else 1)
 
 
 def extract_result_blocks(fields: list[tuple[str, str]]) -> list[dict[str, str]]:
@@ -340,9 +358,18 @@ def normalize_descriptor(text: str) -> str:
 def parse_effect_value(text: str) -> tuple[float | None, str, bool]:
     clean = text.replace("Âµ", "µ").replace("μ", "µ").strip()
     is_censored = bool(re.search(r"(?:<=|>=|<|>|≤|≥)", clean))
+    # Do not turn a reported range or approximation into an exact endpoint.
+    is_censored = is_censored or bool(re.search(
+        r"(?:\b(?:ca\.?|approx(?:imately)?\.?)\s|[~≈]|"
+        r"\d\s*(?:-|–|—|\bto\b)\s*\d)", clean, re.IGNORECASE
+    ))
+    # A decimal comma is ambiguous; only unambiguous thousands groups are removed.
+    for token in re.findall(r"\d[\d,]*(?:\.\d+)?", clean):
+        if ',' in token and not re.fullmatch(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?", token):
+            is_censored = True
     numeric_text = clean.replace(",", "")
     unit_match = re.search(
-        r"([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\s*"
+        r"([+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?)\s*"
         r"(mol/(?:L|l)|mmol/(?:L|l)|µmol/(?:L|l)|umol/(?:L|l)|"
         r"nmol/(?:L|l)|pmol/(?:L|l)|mg/(?:mL|ml)|µg/(?:mL|ml)|"
         r"ug/(?:mL|ml)|ng/(?:mL|ml)|g/(?:L|l)|mg/(?:L|l)|"
@@ -359,14 +386,18 @@ def parse_effect_value(text: str) -> tuple[float | None, str, bool]:
             .replace("/ml", "/mL")
         )
         value = None if is_censored else float(unit_match.group(1))
+        if value is not None and value <= 0:
+            value = None
         return value, unit, is_censored
 
     value_match = re.search(
-        r"([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)", numeric_text
+        r"([+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?)", numeric_text
     )
     if not value_match:
         return None, "", is_censored
     value = None if is_censored else float(value_match.group(1))
+    if value is not None and value <= 0:
+        value = None
     return value, "", is_censored
 
 
@@ -392,6 +423,8 @@ def document_to_exact_rows(
     nominal_measured = first_nonempty(fields, ["Nominal and measured concentrations"])
     test_type = first_nonempty(fields, ["Test type"])
     details_conditions = first_nonempty(fields, ["Details on test conditions"])
+    reference_keys = ";".join(linked_field_documents(document_html, 'Reference'))
+    material_keys = ";".join(linked_field_documents(document_html, 'Test material information'))
 
     rows: list[dict[str, Any]] = []
     for block in extract_result_blocks(fields):
@@ -429,6 +462,18 @@ def document_to_exact_rows(
                 "basis_for_effect": block.get("Basis for effect", ""),
                 "remarks_on_result": block.get("Remarks on result", ""),
                 "study_type": test_type,
+                "type_of_information": first_nonempty(fields, ["Type of information", "Study result type"]),
+                "study_reliability": first_nonempty(fields, ["Reliability"]),
+                "study_adequacy": first_nonempty(fields, ["Adequacy of study"]),
+                "test_material_details": first_nonempty(fields, ["Details on test material", "Specific details on test material used for the study"]),
+                "test_material_identity": first_nonempty(fields, ["Test material identity"]),
+                "reference_author": first_nonempty(fields, ["Author"]),
+                "reference_year": first_nonempty(fields, ["Year"]),
+                "reference_title": first_nonempty(fields, ["Title"]),
+                "reference_report_number": first_nonempty(fields, ["Report no.", "Report number"]),
+                "test_medium": first_nonempty(fields, ["Water media type"]),
+                "reference_document_keys": reference_keys,
+                "test_material_document_keys": material_keys,
                 "details_on_test_conditions": details_conditions,
                 "nominal_measured_context": nominal_measured,
                 "document_url": DOSSIER_STATIC_BASE.format(asset_id=asset_id) + f"documents/{document_key}.html",
@@ -439,9 +484,10 @@ def document_to_exact_rows(
 
 def summarize_exact_rows(exact_rows: pd.DataFrame) -> list[str]:
     if exact_rows.empty:
-        return ["Exact rows extracted: 0"]
+        return ["Target-endpoint result rows extracted: 0"]
     summary = [
-        f"Exact rows extracted: {len(exact_rows)}",
+        f"Target-endpoint result rows extracted (including flagged bounds/ranges): {len(exact_rows)}",
+        "Extraction is not eligibility approval; experimental origin, material, identity and endpoint still require curation.",
         f"Unique chemicals: {exact_rows['casrn'].nunique()}",
         f"Unique dossiers: {exact_rows['asset_id'].nunique()}",
     ]

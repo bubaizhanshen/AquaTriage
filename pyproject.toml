@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ecoood"
-version = "0.2.1"
-description = "Reliability assessment and screening-action benchmark for aquatic ecotoxicity prediction."
+version = "0.3.0"
+description = "AquaTriage review prioritization for aquatic ecotoxicity screening."
 readme = "README.md"
 requires-python = ">=3.11"
 license = {file = "LICENSE"}
@@ -13,9 +13,7 @@ dependencies = [
   "joblib>=1.4",
   "beautifulsoup4>=4.12",
   "lightgbm>=4.0",
-  "matplotlib>=3.8",
-  "networkx>=3.2",
-  "numpy>=1.26",
+  "numpy>=2.0",
   "openpyxl>=3.1",
   "pandas>=2.2",
   "pyarrow>=16.0",
@@ -24,16 +22,11 @@ dependencies = [
   "rdkit==2024.3.2",
   "scikit-learn>=1.5",
   "scipy>=1.13",
-  "seaborn>=0.13",
   "xgboost>=2.0",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
-figures = [
-  "svgutils>=0.3.4",
-  "cairosvg>=2.9",
-]
 [project.urls]
 Homepage = "https://github.com/bubaizhanshen/EcoOOD"
 Repository = "https://github.com/bubaizhanshen/EcoOOD"

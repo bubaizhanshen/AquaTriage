@@ -50,8 +50,8 @@ def main() -> None:
         "ensemble_members": args.members,
         "ensemble_n_jobs": args.ensemble_n_jobs,
         "conformal_alpha": args.alpha,
-        "ecoood_primary_high_error_quantile": 0.9,
-        "ecoood_high_error_quantile_sensitivity": [0.8, 0.9, 0.95],
+        "prediction_error_risk_primary_high_error_quantile": 0.9,
+        "prediction_error_risk_high_error_quantile_sensitivity": [0.8, 0.9, 0.95],
         "endpoint_conditional_conformal_min_group_size": 20,
         "prediction_error_risk_components": (
             "distinct-chemical Tanimoto fingerprint kNN; shrinkage Mahalanobis descriptors; "
@@ -69,9 +69,10 @@ def main() -> None:
         "feature_policy": "explicit feature blocks exclude target, target-scale, identifier, source, and chemical-class fields",
         "publication_year_policy": "used for temporal splitting and audit only; excluded from predictor and reliability inputs",
         "logp_policy": "RDKit MolLogP recomputed for every parseable molecular input",
-        "default_unlabeled_triage": (
-            "five-neighbor case-level block-normalized kNN; a distinct-chemical version is reported as a sensitivity analysis"
-        ),
+        "default_unlabeled_triage": {
+            "low_concern_first": "threshold_proximity",
+            "all_queue": "five-neighbor case-level block_normalized_knn",
+        },
     }
     (args.output_root / "run_manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"

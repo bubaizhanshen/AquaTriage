@@ -5,7 +5,50 @@ from scripts.build_echa_pmra_clean_panel import (
     has_usable_molecular_representation,
     is_acceptable_study_record,
 )
-from scripts.build_echa_pmra_external_rows import parse_effect_value
+from scripts.build_echa_pmra_external_rows import (
+    parse_effect_value, parse_duration_hours, section_anchor_documents, linked_field_documents,
+)
+
+
+def test_study_links_without_optional_icons_are_retained() -> None:
+    html = '''<div id="section">
+      <a class="das-leaf" rel="host" href="doc_one">001 | Key | Experimental study</a>
+      <a class="das-leaf" rel="host" href="doc_two">Endpoint summary</a>
+      <a class="das-leaf" rel="host" href="doc_three"><i class="icon-item icon-ENDPOINT_SUMMARY"></i>002 | Summary</a>
+      <a class="das-leaf" rel="host" href="doc_four"><i class="icon-item icon-ENDPOINT_STUDY_RECORD"></i>Study</a>
+    </div>'''
+    assert [d['is_study_record'] for d in section_anchor_documents(html, 'section')] == [True, False, False, True]
+
+
+def test_duration_accepts_days_but_not_ranges() -> None:
+    assert parse_duration_hours('4 d') == 96
+    assert parse_duration_hours('48 hours') == 48
+    assert parse_duration_hours('72 - 96 h') is None
+
+
+def test_nested_reference_links_are_preserved_without_treating_labels_as_content() -> None:
+    html = '''<div class="das-field"><div class="das-field_label">Reference</div>
+    <div class="das-field_value"><a class="das-field_reference-link" href="ref_uuid">Reference</a></div></div>
+    <div class="das-field"><div class="das-field_label">Test material information</div>
+    <a class="das-field_reference-link" href="material_uuid">Test material information</a></div>'''
+    assert linked_field_documents(html, 'Reference') == ['ref_uuid']
+    assert linked_field_documents(html, 'Test material information') == ['material_uuid']
+
+
+def test_effect_ranges_and_approximations_are_not_exact_values() -> None:
+    for text in ['1 - 5 mg/L', '1 to 5 mg/L', '~ 5 mg/L', 'ca. 5 mg/L']:
+        value, unit, not_exact = parse_effect_value(text)
+        assert value is None
+        assert unit == 'mg/L'
+        assert not_exact
+    assert parse_effect_value('1e-3 mg/L') == (0.001, 'mg/L', False)
+
+
+def test_effect_parser_does_not_invent_positive_or_integer_concentrations() -> None:
+    assert parse_effect_value('-1 mg/L')[0] is None
+    assert parse_effect_value('0 mg/L')[0] is None
+    assert parse_effect_value('1,2 mg/L')[0] is None
+    assert parse_effect_value('.5 mg/L') == (0.5, 'mg/L', False)
 
 
 def test_parse_effect_value_excludes_explicitly_censored_results() -> None:

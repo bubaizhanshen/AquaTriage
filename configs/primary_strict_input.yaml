@@ -1,0 +1,23 @@
+dataset_label: AquaTriage primary strict-input benchmark
+benchmark_role: primary
+n_records: 4611
+n_chemicals: 801
+sha256: 273be0b1c3e34f7a9d9665675049b63f6cd5ae05393027487a98945388074c42
+rdkit_version: 2024.03.2
+seed_panel: [40, 41, 42, 43, 44]
+scoreable_splits:
+  - random
+  - chemical_random
+  - scaffold
+  - temporal
+  - species
+  - chemical_class
+publication_year_policy: split_and_audit_only
+logp_policy: recompute_rdkit_mollogp
+deterministic_rejection_policy: withhold_review
+review_policy: low_concern_first
+default_unlabeled_triage: threshold_proximity
+intermediate_curation_audit:
+  n_records: 4942
+  n_chemicals: 841
+  role: audit_only

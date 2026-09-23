@@ -16,6 +16,8 @@ if str(SRC) not in sys.path:
 
 from ecoood.application import (  # noqa: E402
     DEFAULT_CANDIDATE_COLUMNS,
+    TASK_ALIGNED_CANDIDATE_COLUMNS,
+    REVIEW_POLICIES,
     SUPPORTED_OBJECTIVES,
     apply_ecoood_protocol,
 )
@@ -47,9 +49,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--review-fraction", type=float, default=0.25)
     parser.add_argument("--high-error-quantile", type=float, default=0.90)
+    parser.add_argument("--review-policy", choices=sorted(REVIEW_POLICIES),
+                        help="Default: low_concern_first for omission control; all_queue otherwise.")
     parser.add_argument(
         "--default-signal",
-        default="block_normalized_knn",
+        help="Default: threshold_proximity for low_concern_first; block_normalized_knn otherwise.",
     )
     parser.add_argument("--chemical-id-column", default="chemical_id")
     parser.add_argument("--pred-high-concern-column", default="pred_high_concern")
@@ -74,10 +78,15 @@ def main() -> None:
     args = parse_args()
     queue = pd.read_csv(args.queue)
     development = pd.read_csv(args.development) if args.development else None
+    review_policy = args.review_policy or (
+        "low_concern_first" if args.objective == "false_negative_capture" else "all_queue")
+    default_signal = args.default_signal or (
+        "threshold_proximity" if review_policy == "low_concern_first" else "block_normalized_knn")
     candidate_columns = (
         dict(args.candidate)
         if args.candidate
-        else DEFAULT_CANDIDATE_COLUMNS
+        else (TASK_ALIGNED_CANDIDATE_COLUMNS if review_policy == "low_concern_first"
+              else DEFAULT_CANDIDATE_COLUMNS)
     )
     result = apply_ecoood_protocol(
         queue,
@@ -85,7 +94,8 @@ def main() -> None:
         candidate_columns=candidate_columns,
         objective=args.objective,
         review_fraction=args.review_fraction,
-        default_signal=args.default_signal,
+        default_signal=default_signal,
+        review_policy=review_policy,
         chemical_id_column=args.chemical_id_column,
         pred_high_concern_column=args.pred_high_concern_column,
         true_high_concern_column=args.true_high_concern_column,
@@ -106,6 +116,8 @@ def main() -> None:
                 "selected_signal": result.selected_signal,
                 "selection_source": result.selection_source,
                 "objective": args.objective,
+                "review_policy": review_policy,
+                "candidate_columns": candidate_columns,
                 "review_fraction": args.review_fraction,
                 "queue_chemicals": int(len(result.routed_queue)),
                 "reviewed_scoreable_chemicals": int(

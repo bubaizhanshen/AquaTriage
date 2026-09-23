@@ -75,10 +75,45 @@ def _mean_sd(frame: pd.DataFrame, keys: list[str], values: list[str]) -> pd.Data
     return result
 
 
+def _normalize_legacy_score_names(frame: pd.DataFrame) -> pd.DataFrame:
+    """Read frozen pre-terminology-change tables without emitting old names."""
+    normalized = frame.copy()
+    column_map = {
+        "ecoood_score": "prediction_error_risk_score",
+        "ecoood_endpoint_balanced": "prediction_error_risk_endpoint_balanced",
+        "ecoood_q80": "prediction_error_risk_q80",
+        "ecoood_q95": "prediction_error_risk_q95",
+        "ecoood_minus_chemical": "prediction_error_risk_minus_chemical",
+        "ecoood_minus_biological": "prediction_error_risk_minus_biological",
+        "ecoood_minus_contextual": "prediction_error_risk_minus_contextual",
+        "ecoood_minus_bioactivity": "prediction_error_risk_minus_bioactivity",
+        "ecoood_minus_uncertainty": "prediction_error_risk_minus_uncertainty",
+    }
+    rename = {
+        old: new
+        for old, new in column_map.items()
+        if old in normalized.columns and new not in normalized.columns
+    }
+    if rename:
+        normalized = normalized.rename(columns=rename)
+    if "method" in normalized:
+        normalized["method"] = normalized["method"].replace(
+            {
+                "ecoood": "prediction_error_risk",
+                "ecoood_endpoint_balanced": (
+                    "prediction_error_risk_endpoint_balanced"
+                ),
+                "ecoood_q80": "prediction_error_risk_q80",
+                "ecoood_q95": "prediction_error_risk_q95",
+            }
+        )
+    return normalized
+
+
 def aggregate_deduplicated(root: Path) -> pd.DataFrame:
     frames = []
     for path in sorted(root.glob("seed_*/structured/benchmark_summary.csv")):
-        frame = pd.read_csv(path)
+        frame = _normalize_legacy_score_names(pd.read_csv(path))
         frame["seed"] = int(path.parts[-3].split("_")[-1])
         frames.append(frame)
     if not frames:
@@ -135,12 +170,12 @@ def component_correlations(predictions: pd.DataFrame) -> tuple[pd.DataFrame, pd.
 
 def axis_ablation(ood_scores: pd.DataFrame) -> pd.DataFrame:
     methods = [
-        "ecoood",
-        "ecoood_minus_chemical",
-        "ecoood_minus_biological",
-        "ecoood_minus_contextual",
-        "ecoood_minus_bioactivity",
-        "ecoood_minus_uncertainty",
+        "prediction_error_risk",
+        "prediction_error_risk_minus_chemical",
+        "prediction_error_risk_minus_biological",
+        "prediction_error_risk_minus_contextual",
+        "prediction_error_risk_minus_bioactivity",
+        "prediction_error_risk_minus_uncertainty",
     ]
     subset = ood_scores.loc[
         (ood_scores["model"] == "lightgbm")
@@ -152,12 +187,16 @@ def axis_ablation(ood_scores: pd.DataFrame) -> pd.DataFrame:
     ).reset_index()
     rows = []
     for method in methods:
-        if method == "ecoood" or method not in complete:
+        if method == "prediction_error_risk" or method not in complete:
             continue
-        axis = method.removeprefix("ecoood_minus_")
-        frame = complete[["seed", "split", "ecoood", method]].dropna().copy()
+        axis = method.removeprefix("prediction_error_risk_minus_")
+        frame = complete[
+            ["seed", "split", "prediction_error_risk", method]
+        ].dropna().copy()
         frame["axis_removed"] = axis
-        frame["aurc_delta_vs_full"] = frame[method] - frame["ecoood"]
+        frame["aurc_delta_vs_full"] = (
+            frame[method] - frame["prediction_error_risk"]
+        )
         rows.append(frame[["seed", "split", "axis_removed", "aurc_delta_vs_full"]])
     all_rows = pd.concat(rows, ignore_index=True)
     return _mean_sd(all_rows, ["split", "axis_removed"], ["aurc_delta_vs_full"])
@@ -673,7 +712,12 @@ def named_class_fold_summary(predictions: pd.DataFrame) -> pd.DataFrame:
 
 
 def high_error_label_sensitivity(ood_scores: pd.DataFrame) -> pd.DataFrame:
-    methods = ["ecoood_q80", "ecoood", "ecoood_q95", "ecoood_endpoint_balanced"]
+    methods = [
+        "prediction_error_risk_q80",
+        "prediction_error_risk",
+        "prediction_error_risk_q95",
+        "prediction_error_risk_endpoint_balanced",
+    ]
     subset = ood_scores.loc[
         (ood_scores["model"] == "lightgbm")
         & ood_scores["split"].isin(CORE_SPLITS)
@@ -692,7 +736,7 @@ def coefficient_stability(ood_scores: pd.DataFrame) -> pd.DataFrame:
     ]
     subset = ood_scores.loc[
         (ood_scores["model"] == "lightgbm")
-        & (ood_scores["method"] == "ecoood")
+        & (ood_scores["method"] == "prediction_error_risk")
         & ood_scores["split"].isin(CORE_SPLITS),
         ["seed", "split", *coefficient_columns],
     ].copy()
@@ -897,13 +941,17 @@ def main() -> None:
         index=False,
     )
 
-    predictions = pd.read_csv(root / "aggregate" / "predictions_all_seeds.csv")
+    predictions = _normalize_legacy_score_names(
+        pd.read_csv(root / "aggregate" / "predictions_all_seeds.csv")
+    )
     named_class_fold_summary(predictions).to_csv(
         output / "named_class_fold_summary.csv",
         index=False,
     )
     correlations, interval_ratio = component_correlations(predictions)
-    correlations.to_csv(output / "ecoood_component_correlations.csv", index=False)
+    correlations.to_csv(
+        output / "prediction_error_risk_component_correlations.csv", index=False
+    )
     interval_ratio.to_csv(output / "conformal_scale_ratio_audit.csv", index=False)
     endpoint_resolved_metrics(predictions).to_csv(
         output / "endpoint_resolved_benchmark_metrics.csv", index=False
@@ -914,14 +962,18 @@ def main() -> None:
         index=False,
     )
 
-    ood_scores = pd.read_csv(root / "aggregate" / "ood_score_summary_all_seeds.csv")
-    axis_ablation(ood_scores).to_csv(output / "ecoood_component_ablation.csv", index=False)
+    ood_scores = _normalize_legacy_score_names(
+        pd.read_csv(root / "aggregate" / "ood_score_summary_all_seeds.csv")
+    )
+    axis_ablation(ood_scores).to_csv(
+        output / "prediction_error_risk_component_ablation.csv", index=False
+    )
     high_error_label_sensitivity(ood_scores).to_csv(
-        output / "ecoood_high_error_label_sensitivity.csv",
+        output / "prediction_error_risk_high_error_label_sensitivity.csv",
         index=False,
     )
     coefficient_stability(ood_scores).to_csv(
-        output / "ecoood_logistic_coefficient_stability.csv",
+        output / "prediction_error_risk_logistic_coefficient_stability.csv",
         index=False,
     )
     endpoint_median = root / "aggregate" / "review_workload_endpoint_median_agg.csv"

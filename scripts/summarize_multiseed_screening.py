@@ -18,7 +18,7 @@ DEPLOYMENT_SPLITS = [
 DECISION_MAP_SPLITS = ["temporal", "species", "chemical_class"]
 MODELS = ["lightgbm", "random_forest", "xgboost"]
 METHOD_COLUMNS = {
-    "Prediction-error risk score": "max_ecoood",
+    "Prediction-error risk score": "max_prediction_error_risk_score",
     "Ensemble SD risk": "max_ensemble_sd_risk",
     "Input-space kNN + SD risk": "max_input_space_knn_plus_sd_risk",
     "Block-normalized kNN + SD risk": "max_equal_block_knn_plus_sd_risk",
@@ -29,9 +29,9 @@ METHOD_COLUMNS = {
         "max_equal_block_distance_distinct_chemical"
     ),
     "Similarity AD": "max_similarity_risk",
-    "Prediction-error risk score, endpoint-balanced": "max_ecoood_endpoint_balanced",
-    "Prediction-error risk score, top 20%": "max_ecoood_q80",
-    "Prediction-error risk score, top 5%": "max_ecoood_q95",
+    "Prediction-error risk score, endpoint-balanced": "max_prediction_error_risk_endpoint_balanced",
+    "Prediction-error risk score, top 20%": "max_prediction_error_risk_q80",
+    "Prediction-error risk score, top 5%": "max_prediction_error_risk_q95",
 }
 ACTION_ORDER = ["screen_now", "lower_priority", "withhold_review", "prioritize_testing"]
 DEFAULT_TRIAGE_COLUMN = "ad_equal_block_distance"
@@ -73,6 +73,21 @@ def _run_dir(root: Path, seed: int, split: str) -> Path:
     return structured if structured.exists() else root / f"seed_{seed}"
 
 
+def _normalize_prediction_columns(frame: pd.DataFrame) -> pd.DataFrame:
+    """Read pre-terminology-change outputs without reproducing their names."""
+    normalized = frame.copy()
+    legacy_to_current = {
+        "ecoood_score": "prediction_error_risk_score",
+        "ecoood_endpoint_balanced": "prediction_error_risk_endpoint_balanced",
+        "ecoood_q80": "prediction_error_risk_q80",
+        "ecoood_q95": "prediction_error_risk_q95",
+    }
+    for legacy, current in legacy_to_current.items():
+        if current not in normalized and legacy in normalized:
+            normalized[current] = normalized[legacy]
+    return normalized
+
+
 def load_core_outputs(
     root: Path,
     seeds: list[int],
@@ -97,7 +112,7 @@ def load_core_outputs(
             run_dir = _run_dir(root, seed, split)
             for model in models:
                 path = run_dir / split / model / "predictions.csv"
-                frame = pd.read_csv(path)
+                frame = _normalize_prediction_columns(pd.read_csv(path))
                 frame["seed"] = seed
                 frame["split"] = split
                 frame["model"] = model
@@ -110,7 +125,7 @@ def load_core_outputs(
 
 
 PREDICTION_SCORE_COLUMNS = {
-    "ecoood_score": "max_ecoood",
+    "prediction_error_risk_score": "max_prediction_error_risk_score",
     "ensemble_sd_risk": "max_ensemble_sd_risk",
     "input_space_knn_plus_sd_risk": "max_input_space_knn_plus_sd_risk",
     "equal_block_knn_plus_sd_risk": "max_equal_block_knn_plus_sd_risk",
@@ -121,9 +136,9 @@ PREDICTION_SCORE_COLUMNS = {
         "max_equal_block_distance_distinct_chemical"
     ),
     "ad_similarity": "max_similarity_risk",
-    "ecoood_endpoint_balanced": "max_ecoood_endpoint_balanced",
-    "ecoood_q80": "max_ecoood_q80",
-    "ecoood_q95": "max_ecoood_q95",
+    "prediction_error_risk_endpoint_balanced": "max_prediction_error_risk_endpoint_balanced",
+    "prediction_error_risk_q80": "max_prediction_error_risk_q80",
+    "prediction_error_risk_q95": "max_prediction_error_risk_q95",
 }
 
 

@@ -24,4 +24,6 @@ reliability_fingerprint_metric: tanimoto
 reliability_neighbors: 5
 reliability_context_metric: endpoint_restricted_missing_aware_gower
 reliability_bioactivity_metric: missing_aware_standardized_euclidean
-default_unlabeled_triage: block_normalized_knn
+review_policy: low_concern_first
+default_unlabeled_triage: threshold_proximity
+all_queue_default_unlabeled_triage: block_normalized_knn

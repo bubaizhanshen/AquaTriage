@@ -16,7 +16,7 @@ from ecoood.evaluation import (
 )
 from ecoood.features import EcoFeatureBuilder, attach_rdkit_descriptors
 from ecoood.models import BootstrapEnsembleRegressor
-from ecoood.ood import EcoOODScorer
+from ecoood.ood import PredictionErrorRiskScorer
 from ecoood.schema import DEFAULT_SCHEMA
 
 
@@ -98,7 +98,7 @@ def compute_seed_metrics(
     calib_interval = conformal.predict(calib_pred.mean, scale=calib_pred.std.clip(min=1e-3))
     test_interval = conformal.predict(test_pred.mean, scale=test_pred.std.clip(min=1e-3))
 
-    scorer = EcoOODScorer(schema=DEFAULT_SCHEMA).fit(train_df, train_bundle)
+    scorer = PredictionErrorRiskScorer(schema=DEFAULT_SCHEMA).fit(train_df, train_bundle)
     calib_components = scorer.component_frame(
         calib_df,
         calib_bundle,
@@ -127,13 +127,13 @@ def compute_seed_metrics(
     )
 
     score_warn = float(
-        pd.Series(calib_components_pred.ecoood_score).quantile(0.50)
+        pd.Series(calib_components_pred.prediction_error_risk_score).quantile(0.50)
     )
     score_abstain = float(
-        pd.Series(calib_components_pred.ecoood_score).quantile(0.85)
+        pd.Series(calib_components_pred.prediction_error_risk_score).quantile(0.85)
     )
     decisions = decision_labels(
-        test_components.ecoood_score,
+        test_components.prediction_error_risk_score,
         None,
         score_warn_threshold=score_warn,
         score_abstain_threshold=score_abstain,
@@ -150,17 +150,17 @@ def compute_seed_metrics(
             test_interval.lower,
             test_interval.upper,
             uncertainty=test_pred.std,
-            novelty=test_components.ecoood_score,
+            novelty=test_components.prediction_error_risk_score,
         ),
         **ood_metrics(
             y_test,
             test_pred.mean,
-            test_components.ecoood_score,
+            test_components.prediction_error_risk_score,
             pd.Series([True] * len(test_df)).to_numpy(),
         ),
         **reference_ood_metrics(
-            id_scores=calib_components_pred.ecoood_score,
-            ood_scores=test_components.ecoood_score,
+            id_scores=calib_components_pred.prediction_error_risk_score,
+            ood_scores=test_components.prediction_error_risk_score,
         ),
         "predict_fraction": float((decisions == "predict").mean()),
         "warn_fraction": float((decisions == "warn").mean()),
@@ -181,7 +181,7 @@ def compute_seed_metrics(
     predictions["y_true"] = y_test
     predictions["y_pred"] = test_pred.mean
     predictions["interval_width"] = test_interval.width
-    predictions["ecoood_score"] = test_components.ecoood_score
+    predictions["prediction_error_risk_score"] = test_components.prediction_error_risk_score
     predictions["decision"] = decisions
     predictions["ad_similarity"] = ad_scorer.predict(
         test_bundle,

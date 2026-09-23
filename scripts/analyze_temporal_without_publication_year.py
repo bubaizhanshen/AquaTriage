@@ -115,7 +115,7 @@ def main() -> None:
                 ),
                 "for_ecoood": chemical_for(
                     predictions,
-                    "ecoood_score",
+                    "prediction_error_risk_score",
                     args.review_fraction,
                 ),
             }

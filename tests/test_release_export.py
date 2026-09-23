@@ -25,6 +25,20 @@ def test_release_export_renames_compatibility_score_columns() -> None:
     ]
 
 
+def test_release_export_prefers_current_column_when_legacy_alias_is_also_present() -> None:
+    source = pd.DataFrame(
+        {
+            "prediction_error_risk_score": [0.7],
+            "ecoood_score": [0.4],
+        }
+    )
+
+    released = normalize_release_columns(source)
+
+    assert released.columns.tolist() == ["prediction_error_risk_score"]
+    assert released.iloc[0, 0] == 0.7
+
+
 def test_release_export_renames_internal_score_values() -> None:
     source = pd.DataFrame(
         {

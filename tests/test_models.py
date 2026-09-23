@@ -34,6 +34,9 @@ def test_mlp_ensemble_handles_sparse_inputs() -> None:
     assert pred.mean.shape == (40,)
     assert pred.std.shape == (40,)
     assert np.isfinite(pred.mean).all()
+    assert len(model.member_n_iter_) == 2
+    assert len(model.member_early_stopped_) == 2
+    assert all(value >= 1 for value in model.member_n_iter_)
 
 
 def test_unknown_model_is_rejected() -> None:

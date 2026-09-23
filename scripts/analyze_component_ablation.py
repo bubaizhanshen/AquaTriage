@@ -111,7 +111,7 @@ def load_aurc(root: Path, model: str) -> pd.DataFrame:
     methods = {
         "full": "ecoood",
         **{
-            component: f"ecoood_minus_component_{component}"
+            component: f"prediction_error_risk_minus_component_{component}"
             for component in COMPONENTS
         },
     }
@@ -154,8 +154,11 @@ def load_for(
     review_fraction: float,
 ) -> pd.DataFrame:
     score_columns = [
-        "ecoood_score",
-        *[f"ecoood_minus_component_{component}" for component in COMPONENTS],
+        "prediction_error_risk_score",
+        *[
+            f"prediction_error_risk_minus_component_{component}"
+            for component in COMPONENTS
+        ],
     ]
     rows: list[dict[str, object]] = []
     for seed in SEEDS:
@@ -173,7 +176,7 @@ def load_for(
             ):
                 raise ValueError(f"Prediction rows do not match {split_name}, seed {seed}")
             panel = chemical_panel(predictions, cutoffs, score_columns)
-            full = false_omission_rate(panel, "ecoood_score", review_fraction)
+            full = false_omission_rate(panel, "prediction_error_risk_score", review_fraction)
             rows.append(
                 {
                     "seed": seed,
@@ -187,7 +190,7 @@ def load_for(
             for component, label in COMPONENTS.items():
                 value = false_omission_rate(
                     panel,
-                    f"ecoood_minus_component_{component}",
+                    f"prediction_error_risk_minus_component_{component}",
                     review_fraction,
                 )
                 rows.append(

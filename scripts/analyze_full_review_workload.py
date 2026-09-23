@@ -16,7 +16,7 @@ import pandas as pd
 
 PRIMARY_SPLITS = ["chemical_random", "scaffold", "temporal", "species"]
 METHOD_COLUMNS = {
-    "Prediction-error risk score": "max_ecoood",
+    "Prediction-error risk score": "max_prediction_error_risk_score",
     "Ensemble-SD risk": "max_ensemble_sd_risk",
     "Block-normalized kNN + SD risk": "max_equal_block_knn_plus_sd_risk",
     "Block-normalized kNN distance": "max_equal_block_distance",

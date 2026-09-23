@@ -21,7 +21,15 @@ DEFAULT_CANDIDATE_COLUMNS: dict[str, str] = {
     "similarity_ad": "ad_similarity",
 }
 
+TASK_ALIGNED_CANDIDATE_COLUMNS = {
+    "threshold_proximity": "prediction_distance",
+    "interval_crossing": "interval_cross_score",
+    **DEFAULT_CANDIDATE_COLUMNS,
+}
+REVIEW_POLICIES = {"all_queue", "low_concern_first"}
+
 SUPPORTED_OBJECTIVES = {
+    "directional_underprediction_area",
     "false_negative_capture",
     "largest_error_capture",
     "overall_error_ranking",
@@ -58,10 +66,12 @@ def _coerce_bool(values: pd.Series, *, column: str) -> pd.Series:
     return normalized.map(mapping).astype(bool)
 
 
-def _validate_fraction(value: float, *, name: str) -> float:
+def _validate_fraction(value: float, *, name: str, inclusive: bool = False) -> float:
     value = float(value)
-    if not 0 < value < 1:
-        raise ValueError(f"{name} must be between 0 and 1.")
+    valid = 0 <= value <= 1 if inclusive else 0 < value < 1
+    if not valid:
+        bounds = "[0, 1]" if inclusive else "(0, 1)"
+        raise ValueError(f"{name} must be in {bounds}.")
     return value
 
 
@@ -106,19 +116,37 @@ def _review_mask(
     score_column: str,
     review_fraction: float,
     chemical_id_column: str,
+    review_policy: str = "all_queue",
+    pred_high_concern_column: str = "pred_high_concern",
 ) -> pd.Series:
-    review_count = max(1, int(round(len(frame) * review_fraction)))
+    review_count = int(round(len(frame) * review_fraction))
     review_count = min(review_count, len(frame))
-    ordered = frame.assign(
-        _ecoood_score=pd.to_numeric(frame[score_column], errors="raise"),
-        _ecoood_id=frame[chemical_id_column].astype(str),
-    ).sort_values(
-        ["_ecoood_score", "_ecoood_id"],
-        ascending=[False, True],
-        kind="mergesort",
-    )
+    ordered = _ordered_queue(frame, score_column=score_column,
+                             chemical_id_column=chemical_id_column,
+                             review_policy=review_policy,
+                             pred_high_concern_column=pred_high_concern_column)
     selected = ordered.head(review_count).index
     return frame.index.to_series().isin(selected)
+
+
+def _ordered_queue(
+    frame: pd.DataFrame, *, score_column: str, chemical_id_column: str,
+    review_policy: str, pred_high_concern_column: str,
+) -> pd.DataFrame:
+    if review_policy not in REVIEW_POLICIES:
+        raise ValueError(f"Unknown review policy: {review_policy}")
+    ordered = frame.assign(
+        _selected_score=pd.to_numeric(frame[score_column], errors="raise"),
+        _chemical_sort_id=frame[chemical_id_column].astype(str),
+    )
+    columns = ["_selected_score", "_chemical_sort_id"]
+    ascending = [False, True]
+    if review_policy == "low_concern_first":
+        ordered = ordered.assign(_pred_high=_coerce_bool(
+            frame[pred_high_concern_column], column=pred_high_concern_column))
+        columns.insert(0, "_pred_high")
+        ascending.insert(0, True)
+    return ordered.sort_values(columns, ascending=ascending, kind="mergesort")
 
 
 def _false_negative_metrics(
@@ -163,9 +191,13 @@ def evaluate_candidate_signals(
     true_high_concern_column: str = "true_high_concern",
     y_true_column: str = "y_true",
     y_pred_column: str = "y_pred",
+    directional_loss_column: str = "directional_underprediction_loss",
     high_error_quantile: float = 0.90,
+    review_policy: str = "all_queue",
 ) -> pd.DataFrame:
-    review_fraction = _validate_fraction(review_fraction, name="review_fraction")
+    if review_policy not in REVIEW_POLICIES:
+        raise ValueError(f"Unknown review policy: {review_policy}")
+    review_fraction = _validate_fraction(review_fraction, name="review_fraction", inclusive=True)
     high_error_quantile = _validate_fraction(
         high_error_quantile,
         name="high_error_quantile",
@@ -195,6 +227,22 @@ def evaluate_candidate_signals(
             f"{true_high_concern_column} is required for false-negative selection."
         )
 
+    directional_loss: np.ndarray | None = None
+    if objective == "directional_underprediction_area":
+        if directional_loss_column not in development:
+            raise ValueError(
+                "Directional-underprediction selection requires column: "
+                f"{directional_loss_column}"
+            )
+        directional_loss = pd.to_numeric(
+            development[directional_loss_column],
+            errors="raise",
+        ).to_numpy(dtype=float)
+        if not np.isfinite(directional_loss).all() or (directional_loss < 0).any():
+            raise ValueError(
+                f"{directional_loss_column} must contain finite nonnegative values."
+            )
+
     y_true: np.ndarray | None = None
     y_pred: np.ndarray | None = None
     if objective in {"largest_error_capture", "overall_error_ranking"}:
@@ -218,6 +266,8 @@ def evaluate_candidate_signals(
             score_column=score_column,
             review_fraction=review_fraction,
             chemical_id_column=chemical_id_column,
+            review_policy=review_policy,
+            pred_high_concern_column=pred_high_concern_column,
         ).to_numpy()
         row: dict[str, object] = {
             "signal": signal,
@@ -225,6 +275,7 @@ def evaluate_candidate_signals(
             "objective": objective,
             "review_fraction": review_fraction,
             "review_count": int(reviewed.sum()),
+            "review_policy": review_policy,
         }
         if true_high is not None:
             row.update(_false_negative_metrics(true_high, pred_high, reviewed))
@@ -241,6 +292,29 @@ def evaluate_candidate_signals(
             )
             _, _, aurc = risk_coverage(y_true, y_pred, score)
             row["aurc"] = aurc
+        if directional_loss is not None:
+            chemical_ids = development[chemical_id_column].astype(str).to_numpy()
+            ordered = (np.lexsort((chemical_ids, -score, pred_high))
+                       if review_policy == "low_concern_first"
+                       else np.lexsort((chemical_ids, -score)))
+            total_loss = float(directional_loss.sum())
+            if total_loss > 0:
+                cumulative_capture = np.r_[
+                    0.0,
+                    np.cumsum(directional_loss[ordered]) / total_loss,
+                ]
+                workload = np.arange(len(cumulative_capture), dtype=float) / len(
+                    directional_loss
+                )
+                row["directional_underprediction_capture_area"] = float(
+                    np.trapezoid(cumulative_capture, workload)
+                )
+                row["directional_underprediction_capture"] = float(
+                    directional_loss[reviewed].sum() / total_loss
+                )
+            else:
+                row["directional_underprediction_capture_area"] = float("nan")
+                row["directional_underprediction_capture"] = float("nan")
         rows.append(row)
     return pd.DataFrame(rows)
 
@@ -257,7 +331,9 @@ def select_reliability_signal(
     true_high_concern_column: str = "true_high_concern",
     y_true_column: str = "y_true",
     y_pred_column: str = "y_pred",
+    directional_loss_column: str = "directional_underprediction_loss",
     high_error_quantile: float = 0.90,
+    review_policy: str = "all_queue",
 ) -> tuple[str, pd.DataFrame, str]:
     if default_signal not in candidate_columns:
         raise ValueError(f"Unknown default signal: {default_signal}")
@@ -271,7 +347,9 @@ def select_reliability_signal(
         true_high_concern_column=true_high_concern_column,
         y_true_column=y_true_column,
         y_pred_column=y_pred_column,
+        directional_loss_column=directional_loss_column,
         high_error_quantile=high_error_quantile,
+        review_policy=review_policy,
     )
     candidate_order = {
         signal: position for position, signal in enumerate(candidate_columns)
@@ -279,7 +357,27 @@ def select_reliability_signal(
     metrics["candidate_order"] = metrics["signal"].map(candidate_order)
 
     selection_source = "development_labels"
-    if objective == "false_negative_capture":
+    if objective == "directional_underprediction_area":
+        if metrics["directional_underprediction_capture_area"].notna().any():
+            ranked = metrics.assign(
+                _primary=metrics[
+                    "directional_underprediction_capture_area"
+                ].fillna(-np.inf),
+                _secondary=metrics[
+                    "directional_underprediction_capture"
+                ].fillna(-np.inf),
+            ).sort_values(
+                ["_primary", "_secondary", "candidate_order"],
+                ascending=[False, False, True],
+                kind="mergesort",
+            )
+        else:
+            ranked = metrics.sort_values("candidate_order", kind="mergesort")
+            selected = default_signal
+            selection_source = "benchmark_default_no_directional_loss"
+            metrics["selected"] = metrics["signal"].eq(selected)
+            return selected, metrics, selection_source
+    elif objective == "false_negative_capture":
         if metrics["false_negative_capture"].notna().any():
             ranked = metrics.assign(
                 _primary=metrics["false_negative_capture"].fillna(-np.inf),
@@ -333,8 +431,11 @@ def route_screening_queue(
     chemical_id_column: str = "chemical_id",
     pred_high_concern_column: str = "pred_high_concern",
     eligible_column: str = "input_eligible",
+    review_policy: str = "all_queue",
 ) -> pd.DataFrame:
-    review_fraction = _validate_fraction(review_fraction, name="review_fraction")
+    if review_policy not in REVIEW_POLICIES:
+        raise ValueError(f"Unknown review policy: {review_policy}")
+    review_fraction = _validate_fraction(review_fraction, name="review_fraction", inclusive=True)
     _validate_chemical_frame(queue, chemical_id_column=chemical_id_column)
     if selected_signal not in candidate_columns:
         raise ValueError(f"Unknown selected signal: {selected_signal}")
@@ -364,20 +465,19 @@ def route_screening_queue(
         errors="raise",
     )
     routed["review_fraction"] = review_fraction
+    routed["review_policy"] = review_policy
     routed["review_rank"] = np.nan
     routed["reviewed"] = False
 
     eligible_frame = routed.loc[eligible].copy()
     if not eligible_frame.empty:
-        ordered = eligible_frame.assign(
-            _ecoood_id=eligible_frame[chemical_id_column].astype(str),
-        ).sort_values(
-            ["selected_score", "_ecoood_id"],
-            ascending=[False, True],
-            kind="mergesort",
+        ordered = _ordered_queue(
+            eligible_frame, score_column="selected_score",
+            chemical_id_column=chemical_id_column, review_policy=review_policy,
+            pred_high_concern_column=pred_high_concern_column,
         )
         routed.loc[ordered.index, "review_rank"] = np.arange(1, len(ordered) + 1)
-        review_count = max(1, int(round(len(ordered) * review_fraction)))
+        review_count = int(round(len(ordered) * review_fraction))
         review_count = min(review_count, len(ordered))
         routed.loc[ordered.head(review_count).index, "reviewed"] = True
 
@@ -417,9 +517,13 @@ def apply_ecoood_protocol(
     true_high_concern_column: str = "true_high_concern",
     y_true_column: str = "y_true",
     y_pred_column: str = "y_pred",
+    directional_loss_column: str = "directional_underprediction_loss",
     eligible_column: str = "input_eligible",
     high_error_quantile: float = 0.90,
+    review_policy: str = "all_queue",
 ) -> EcoOODApplicationResult:
+    if review_policy not in REVIEW_POLICIES:
+        raise ValueError(f"Unknown review policy: {review_policy}")
     if default_signal not in candidate_columns:
         raise ValueError(f"Unknown default signal: {default_signal}")
     if objective not in SUPPORTED_OBJECTIVES:
@@ -443,11 +547,16 @@ def apply_ecoood_protocol(
                     "objective": objective,
                     "selected": signal == selected_signal,
                     "selection_source": selection_source,
+                    "review_policy": review_policy,
                 }
                 for signal, column in candidate_columns.items()
             ]
         )
     else:
+        overlap = set(queue[chemical_id_column].astype(str)) & set(
+            development[chemical_id_column].astype(str))
+        if overlap:
+            raise ValueError("Development and evaluation chemicals must be disjoint.")
         _validate_candidates(development, candidate_columns)
         selected_signal, selection_metrics, selection_source = (
             select_reliability_signal(
@@ -461,7 +570,9 @@ def apply_ecoood_protocol(
                 true_high_concern_column=true_high_concern_column,
                 y_true_column=y_true_column,
                 y_pred_column=y_pred_column,
+                directional_loss_column=directional_loss_column,
                 high_error_quantile=high_error_quantile,
+                review_policy=review_policy,
             )
         )
         selection_metrics["selection_source"] = selection_source
@@ -474,6 +585,7 @@ def apply_ecoood_protocol(
         chemical_id_column=chemical_id_column,
         pred_high_concern_column=pred_high_concern_column,
         eligible_column=eligible_column,
+        review_policy=review_policy,
     )
     return EcoOODApplicationResult(
         selected_signal=selected_signal,

@@ -9,7 +9,7 @@ from ecoood.features import FeatureBundle
 from ecoood.conformal import decision_labels
 from ecoood.ood import (
     CalibrationRiskScorer,
-    EcoOODScorer,
+    PredictionErrorRiskScorer,
     _mean_tanimoto_knn_distance,
     _taxonomy_novelty,
     calibration_meta_bootstrap,
@@ -49,7 +49,7 @@ def _frame(n_rows: int) -> pd.DataFrame:
 def test_uncertainty_component_uses_ensemble_standard_deviation_only() -> None:
     train = _frame(3)
     query = _frame(2)
-    scorer = EcoOODScorer(schema=DEFAULT_SCHEMA).fit(train, _bundle(3))
+    scorer = PredictionErrorRiskScorer(schema=DEFAULT_SCHEMA).fit(train, _bundle(3))
     components = scorer.component_frame(
         query,
         _bundle(2),
@@ -104,7 +104,7 @@ def test_taxonomy_novelty_preserves_higher_rank_support() -> None:
 
 
 def test_displayed_axes_use_calibration_scaled_subcomponents() -> None:
-    scorer = EcoOODScorer(schema=DEFAULT_SCHEMA)
+    scorer = PredictionErrorRiskScorer(schema=DEFAULT_SCHEMA)
     components = pd.DataFrame(
         {
             "d_chem_knn": [0.0, 2.0],

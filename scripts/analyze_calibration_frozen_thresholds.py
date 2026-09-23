@@ -23,6 +23,10 @@ DEFAULT_SPLITS = (
     "chemical_class",
 )
 METHODS = {
+    # The release prediction files use ``ecoood_score`` as the stable data
+    # column name.  The manuscript calls this candidate measure the
+    # prediction-error risk score; keep the display name separate from the
+    # storage alias so older exports remain readable.
     "Prediction-error risk score": "ecoood_score",
     "Ensemble-SD risk": "ensemble_sd_risk",
     "Block-normalized kNN + SD risk": "equal_block_knn_plus_sd_risk",
