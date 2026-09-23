@@ -1,6 +1,6 @@
 # AquaTriage
 
-[![Tests](https://github.com/bubaizhanshen/EcoOOD/actions/workflows/tests.yml/badge.svg)](https://github.com/bubaizhanshen/EcoOOD/actions/workflows/tests.yml)
+[![Tests](https://github.com/bubaizhanshen/AquaTriage/actions/workflows/tests.yml/badge.svg)](https://github.com/bubaizhanshen/AquaTriage/actions/workflows/tests.yml)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -70,7 +70,7 @@ tests/                  Unit and regression tests
 Generated benchmark outputs are stored locally under `outputs/`. The current
 strict-input benchmark, frozen cutoffs, case-level predictions, and compact
 analysis tables are distributed through the
-[v0.3.0 analysis release](https://github.com/bubaizhanshen/EcoOOD/releases/tag/v0.3.0).
+[v0.3.0 analysis release](https://github.com/bubaizhanshen/AquaTriage/releases/tag/v0.3.0).
 The processed external evaluation panels used in the current manuscript are
 included under `data/processed/` because they are small, fixed analysis inputs;
 the earlier ECHA-only tables are retained for historical compatibility.

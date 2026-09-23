@@ -89,7 +89,7 @@ This archive contains the strict-input 4611-case benchmark, the 1027-case
 external panel, frozen calibration cutoffs, case-level predictions, and compact
 tables for the review-allocation and fixed acute-hazard analyses.
 
-Clone https://github.com/bubaizhanshen/EcoOOD, install its environment, and
+Clone https://github.com/bubaizhanshen/AquaTriage, install its environment, and
 run the fixed 1 mg/L analysis with:
 
 ```bash

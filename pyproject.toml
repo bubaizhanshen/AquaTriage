@@ -28,9 +28,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 [project.urls]
-Homepage = "https://github.com/bubaizhanshen/EcoOOD"
-Repository = "https://github.com/bubaizhanshen/EcoOOD"
-Issues = "https://github.com/bubaizhanshen/EcoOOD/issues"
+Homepage = "https://github.com/bubaizhanshen/AquaTriage"
+Repository = "https://github.com/bubaizhanshen/AquaTriage"
+Issues = "https://github.com/bubaizhanshen/AquaTriage/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

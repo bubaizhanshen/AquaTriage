@@ -10,7 +10,7 @@ This directory contains the small public demo input used by AquaTriage examples 
 tests, together with the field-level manifest for the current application
 configuration. The strict benchmark, fixed cutoffs, case-level predictions,
 and compact analysis tables are available in the
-[v0.3.0 analysis release](https://github.com/bubaizhanshen/EcoOOD/releases/tag/v0.3.0).
+[v0.3.0 analysis release](https://github.com/bubaizhanshen/AquaTriage/releases/tag/v0.3.0).
 
 ## Layout
 
