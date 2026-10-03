@@ -44,7 +44,7 @@ def main() -> None:
     parser.add_argument("--fixed-results", type=Path, required=True)
     parser.add_argument("--review-results", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--version", default="v0.4.1")
+    parser.add_argument("--version", default="v0.4.2")
     parser.add_argument("--analysis-root", type=Path)
     parser.add_argument("--bioactivity-manifest", type=Path)
     args = parser.parse_args()
@@ -53,8 +53,8 @@ def main() -> None:
     external = pd.read_csv(args.external_panel, usecols=["chemical_id", "case_id"])
     if (len(benchmark), benchmark.chemical_id.nunique()) != (4519, 775):
         raise ValueError("Identity-corrected primary benchmark must contain 4519 cases from 775 chemicals")
-    if (len(external), external.chemical_id.nunique()) != (1027, 441):
-        raise ValueError("External panel must contain 1027 cases from 441 chemicals")
+    if (len(external), external.chemical_id.nunique()) != (1025, 440):
+        raise ValueError("External panel must contain 1025 cases from 440 chemicals")
     if external.case_id.duplicated().any():
         raise ValueError("External case identifiers must be unique")
 
@@ -118,6 +118,9 @@ def main() -> None:
                 entries[f"tables/development_{size}/{filename}"] = (
                     args.analysis_root / "results" / f"development_{size}" / filename
                 )
+        external_exclusions = args.analysis_root / "external_composition_exclusions.csv"
+        if external_exclusions.is_file():
+            entries["audit/external_composition_exclusions.csv"] = external_exclusions
     for name, path in entries.items():
         if not path.is_file():
             raise FileNotFoundError(f"{name}: {path}")
@@ -125,7 +128,7 @@ def main() -> None:
     manifest = {
         "release": args.version,
         "primary_benchmark": {"cases": 4519, "chemicals": 775},
-        "external_panel": {"cases": 1027, "chemicals": 441},
+        "external_panel": {"cases": 1025, "chemicals": 440},
         "files": [
             {"path": name, "bytes": path.stat().st_size, "sha256": sha256(path)}
             for name, path in entries.items()
@@ -133,13 +136,15 @@ def main() -> None:
     }
     readme = """# AquaTriage analysis data RELEASE_VERSION
 
-This archive contains the identity-corrected 4519-case benchmark, the 1027-case
+This archive contains the identity-corrected 4519-case benchmark, the 1025-case
 external panel, frozen calibration cutoffs, case-level predictions, and compact
 tables for the review-allocation and fixed acute-hazard analyses.
 Unconfirmed PubChem test-material mappings and generalized structures with
 dummy atoms were removed before refitting. Split assignments, feature
 definitions, source-reference groups, predictor-family comparisons and
 conditional sensitivity results are included in the audit and tables folders.
+The external panel excludes a variable-repeat polymer previously represented
+by a finite surrogate structure; all external statistics use the corrected queue.
 
 Clone https://github.com/bubaizhanshen/AquaTriage, install its environment, and
 run the fixed 1 mg/L analysis with:

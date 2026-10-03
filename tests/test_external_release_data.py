@@ -3,6 +3,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from ecoood.molecular_identity import fixed_composition_molecule
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -50,8 +52,10 @@ def test_expanded_external_panel_matches_current_public_snapshot() -> None:
         ROOT / "data" / "processed" / "ecoood_external_expanded_v1.csv"
     )
 
-    assert len(panel) == 1027
-    assert panel["chemical_id"].nunique() == 441
+    assert len(panel) == 1025
+    assert panel["chemical_id"].nunique() == 440
+    assert not panel["casrn"].eq("9002-93-1").any()
+    assert panel["smiles"].map(fixed_composition_molecule).notna().all()
     assert panel["case_id"].is_unique
     assert set(panel["source"]) == {
         "echa_extension_main",

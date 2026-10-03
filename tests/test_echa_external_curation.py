@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from scripts.build_echa_pmra_clean_panel import (
     has_resolved_molecular_identity,
@@ -128,5 +129,24 @@ def test_inner_salt_passes_internal_and_external_molecular_checks() -> None:
         }
     )
     assert not deterministic_rejection_flag(row)
+    assert has_usable_molecular_representation(row["smiles"])
+    assert has_resolved_molecular_identity(row)
+
+
+@pytest.mark.parametrize("smiles", [
+    "CC*",
+    "CCCCN(C)C |LN:3:1.2|",
+    "CC(C)(C)CC(C)(C)C1=CC=C(OCCO)C=C1 |c:16,t:8,10,lp:12:2,15:2,Sg:n:12,13,14::ht|",
+])
+def test_external_gate_rejects_unspecified_composition(smiles: str) -> None:
+    row = pd.Series({"chemical_name": "Registered substance", "smiles": smiles,
+                     "inchikey": "STRUCTURE-ID"})
+    assert not has_usable_molecular_representation(smiles)
+    assert not has_resolved_molecular_identity(row)
+
+
+def test_external_gate_accepts_fixed_composition_cxsmiles_stereochemistry() -> None:
+    row = pd.Series({"chemical_name": "Cyclohexene", "smiles": "C1=CCCCC1 |c:0|",
+                     "inchikey": "HGCIXCUEYOPUTN-UHFFFAOYSA-N"})
     assert has_usable_molecular_representation(row["smiles"])
     assert has_resolved_molecular_identity(row)

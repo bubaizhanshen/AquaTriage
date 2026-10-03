@@ -13,10 +13,11 @@ from zipfile import ZipFile
 import numpy as np
 import pandas as pd
 import requests
-from rdkit import Chem, rdBase
+from rdkit import Chem
 
 from ecoood.dsstox import expand_source_paths, parse_clowder_zip_listing, resolve_chemical_index_from_sources
 from ecoood.invitrodb import INVITRODB_V43_BLOB_URL, attach_mechanistic_features, load_or_build_mechanistic_features
+from ecoood.molecular_identity import fixed_composition_molecule
 
 
 ECOTOX_MEMBERS = {
@@ -309,14 +310,8 @@ def deterministic_rejection_flag(row: pd.Series) -> bool:
     smiles = str(row.get("smiles", "")).strip()
     if not smiles:
         return True
-    with rdBase.BlockLogs():
-        molecule = Chem.MolFromSmiles(smiles)
+    molecule = fixed_composition_molecule(smiles)
     if molecule is None:
-        return True
-    # Generalized/R-group structures do not define a fixed test substance.
-    if any(atom.GetAtomicNum() == 0 for atom in molecule.GetAtoms()):
-        return True
-    if not any(atom.GetAtomicNum() == 6 for atom in molecule.GetAtoms()):
         return True
     # An inner salt is one zwitterionic molecule, not a separate counterion salt.
     if "salt" in name and not _is_single_molecule_inner_salt(name, molecule):

@@ -132,3 +132,13 @@ def test_concrete_cxsmiles_stereochemistry_is_not_a_generalized_structure() -> N
     row = pd.Series({"chemical_name": "Cyclohexene", "smiles": "C1=CCCCC1 |c:0|",
                      "structure_source": "dsstox"})
     assert not deterministic_rejection_flag(row)
+
+
+@pytest.mark.parametrize("smiles", [
+    "CCCCN(C)C |LN:3:1.2|",
+    "CC(C)(C)CC(C)(C)C1=CC=C(OCCO)C=C1 |c:16,t:8,10,lp:12:2,15:2,Sg:n:12,13,14::ht|",
+])
+def test_variable_repetition_is_not_a_fixed_molecular_input(smiles: str) -> None:
+    row = pd.Series({"chemical_name": "Registered substance", "smiles": smiles,
+                     "structure_source": "dsstox"})
+    assert deterministic_rejection_flag(row)

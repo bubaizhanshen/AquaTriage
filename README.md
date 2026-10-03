@@ -70,7 +70,7 @@ tests/                  Unit and regression tests
 Generated benchmark outputs are stored locally under `outputs/`. The current
 strict-input benchmark, frozen cutoffs, case-level predictions, and compact
 analysis tables are distributed through the
-[v0.4.1 analysis release](https://github.com/bubaizhanshen/AquaTriage/releases/tag/v0.4.1).
+[v0.4.2 analysis release](https://github.com/bubaizhanshen/AquaTriage/releases/tag/v0.4.2).
 The processed external evaluation panels used in the current manuscript are
 included under `data/processed/` because they are small, fixed analysis inputs;
 the earlier ECHA-only tables are retained for historical compatibility.
@@ -270,7 +270,7 @@ conda run -n ecoood python scripts/analyze_full_review_workload.py \
 ```
 
 Reproduce the fixed 1, 10, and 100 mg/L acute-effect screening comparisons
-from the inputs in the v0.4.1 release archive:
+from the inputs in the v0.4.2 release archive:
 
 ```bash
 conda run -n ecoood python scripts/analyze_absolute_hazard_thresholds.py \
@@ -359,8 +359,8 @@ these fields as bioactivity proxies.
 The repository retains the earlier ECHA-only tables for compatibility and also
 includes the current expanded external panel:
 
-- `data/processed/ecoood_external_expanded_v1.csv`: 1,027 freshwater cases
-  across 441 chemicals, derived from the retained historical ECHA/REACH cohort
+- `data/processed/ecoood_external_expanded_v1.csv`: 1,025 freshwater cases
+  across 440 chemicals, derived from the retained historical ECHA/REACH cohort
   and official Japanese Ministry of the Environment summaries;
 - `data/processed/echa_external_main.csv`: historical 100-case, 48-chemical
   ECHA-only panel;

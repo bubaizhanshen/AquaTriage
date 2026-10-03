@@ -6,10 +6,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from rdkit import Chem, RDLogger
+from rdkit import RDLogger
 
 from ecoood.features import attach_rdkit_descriptors
 from ecoood.invitrodb import attach_mechanistic_features, load_or_build_mechanistic_features
+from ecoood.molecular_identity import fixed_composition_molecule
 from ecoood.schema import DEFAULT_SCHEMA
 
 RDLogger.DisableLog("rdApp.*")
@@ -111,13 +112,7 @@ def is_acceptable_study_record(value: object) -> bool:
 
 
 def has_usable_molecular_representation(value: object) -> bool:
-    smiles = "" if pd.isna(value) else str(value).strip()
-    if not smiles:
-        return False
-    molecule = Chem.MolFromSmiles(smiles)
-    return molecule is not None and any(
-        atom.GetAtomicNum() == 6 for atom in molecule.GetAtoms()
-    )
+    return fixed_composition_molecule(value) is not None
 
 
 def has_resolved_molecular_identity(row: pd.Series) -> bool:
@@ -125,7 +120,11 @@ def has_resolved_molecular_identity(row: pd.Series) -> bool:
     name = "" if pd.isna(row.get("chemical_name")) else str(row["chemical_name"]).strip()
     smiles = "" if pd.isna(row.get("smiles")) else str(row["smiles"]).strip()
     inchikey = "" if pd.isna(row.get("inchikey")) else str(row["inchikey"]).strip()
-    return bool(inchikey) and "|" not in smiles and not VARIABLE_COMPOSITION_PATTERN.search(name)
+    return (
+        bool(inchikey)
+        and fixed_composition_molecule(smiles) is not None
+        and not VARIABLE_COMPOSITION_PATTERN.search(name)
+    )
 
 
 def build_species_meta(train_df: pd.DataFrame) -> pd.DataFrame:

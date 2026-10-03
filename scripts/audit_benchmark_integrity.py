@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from ecoood.features import EcoFeatureBuilder, attach_rdkit_descriptors, smiles_to_mol
+from ecoood.molecular_identity import fixed_composition_molecule
 from ecoood.schema import DEFAULT_SCHEMA
 
 
@@ -219,6 +220,8 @@ def strict_input_eligibility_audit(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.D
             return "generalized structure containing dummy atoms"
         if not any(atom.GetAtomicNum() == 6 for atom in molecule.GetAtoms()):
             return "carbon-free structure"
+        if fixed_composition_molecule(row.get(DEFAULT_SCHEMA.smiles)) is None:
+            return "variable molecular composition or repetition"
         if deterministic_rejection_flag(row):
             return "unverified fallback identity or unresolved salt form"
         return ""
