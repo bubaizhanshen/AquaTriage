@@ -44,7 +44,7 @@ def main() -> None:
     parser.add_argument("--fixed-results", type=Path, required=True)
     parser.add_argument("--review-results", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--version", default="v0.4.0")
+    parser.add_argument("--version", default="v0.4.1")
     parser.add_argument("--analysis-root", type=Path)
     parser.add_argument("--bioactivity-manifest", type=Path)
     args = parser.parse_args()
@@ -131,7 +131,7 @@ def main() -> None:
             for name, path in entries.items()
         ],
     }
-    readme = """# AquaTriage analysis data v0.4.0
+    readme = """# AquaTriage analysis data RELEASE_VERSION
 
 This archive contains the identity-corrected 4519-case benchmark, the 1027-case
 external panel, frozen calibration cutoffs, case-level predictions, and compact
@@ -160,7 +160,7 @@ reports endpoint matching, 1/10/100 mg/L thresholds, chemical-level review
 counts, same-queue random references, and paired chemical bootstrap intervals.
 All outputs are derived from already-fitted predictions.
 See `manifest.json` for file sizes and SHA-256 checksums.
-"""
+""".replace("RELEASE_VERSION", args.version)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with ZipFile(args.output, "x", compression=ZIP_DEFLATED, compresslevel=6) as archive:
         for name, path in entries.items():

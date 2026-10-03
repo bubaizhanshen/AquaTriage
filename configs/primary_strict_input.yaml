@@ -1,8 +1,8 @@
-dataset_label: AquaTriage primary strict-input benchmark
+dataset_label: AquaTriage identity-corrected primary benchmark
 benchmark_role: primary
-n_records: 4611
-n_chemicals: 801
-sha256: 273be0b1c3e34f7a9d9665675049b63f6cd5ae05393027487a98945388074c42
+n_records: 4519
+n_chemicals: 775
+sha256: dfe80e979d3a5594353120eb2b28b9b2429f66ba12a5ba7338cd119060a8e04e
 rdkit_version: 2024.03.2
 seed_panel: [40, 41, 42, 43, 44]
 scoreable_splits:
@@ -17,7 +17,4 @@ logp_policy: recompute_rdkit_mollogp
 deterministic_rejection_policy: withhold_review
 review_policy: low_concern_first
 default_unlabeled_triage: threshold_proximity
-intermediate_curation_audit:
-  n_records: 4942
-  n_chemicals: 841
-  role: audit_only
+identity_policy: confirmed_test_material_and_fixed_composition_structure

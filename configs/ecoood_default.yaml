@@ -18,7 +18,7 @@ publication_year_policy: split_and_audit_only
 logp_policy: recompute_rdkit_mollogp
 bioactivity_coverage_count_policy: audit_only
 distinct_chemical_knn_sensitivity: true
-acyclic_scaffold_identity_sensitivity: true
+acyclic_scaffold_identity_sensitivity: false
 reliability_component_mode: revised
 reliability_fingerprint_metric: tanimoto
 reliability_neighbors: 5

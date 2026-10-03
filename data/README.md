@@ -2,7 +2,7 @@
 
 `processed/demo_application_development.csv` and
 `processed/demo_application_queue.csv` are synthetic chemical-level inputs for
-the fixed EcoOOD application protocol described in the repository README. They
+the AquaTriage application protocol described in the repository README. They
 contain no provider records and can be used to verify signal selection and
 four-route screening output.
 
@@ -10,7 +10,7 @@ This directory contains the small public demo input used by AquaTriage examples 
 tests, together with the field-level manifest for the current application
 configuration. The strict benchmark, fixed cutoffs, case-level predictions,
 and compact analysis tables are available in the
-[v0.4.0 analysis release](https://github.com/bubaizhanshen/AquaTriage/releases/tag/v0.4.0).
+[v0.4.1 analysis release](https://github.com/bubaizhanshen/AquaTriage/releases/tag/v0.4.1).
 
 ## Layout
 

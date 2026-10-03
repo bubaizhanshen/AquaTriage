@@ -20,7 +20,7 @@ RDLogger.DisableLog("rdApp.*")
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_PATH = ROOT / "data" / "processed" / "EcoOOD_benchmark_snapshot_structured.csv"
+DATA_PATH = ROOT / "data" / "strict_input_benchmark.csv"
 DEFAULT_PANEL_PATH = (
     ROOT
     / "results"

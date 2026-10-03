@@ -70,7 +70,7 @@ tests/                  Unit and regression tests
 Generated benchmark outputs are stored locally under `outputs/`. The current
 strict-input benchmark, frozen cutoffs, case-level predictions, and compact
 analysis tables are distributed through the
-[v0.4.0 analysis release](https://github.com/bubaizhanshen/AquaTriage/releases/tag/v0.4.0).
+[v0.4.1 analysis release](https://github.com/bubaizhanshen/AquaTriage/releases/tag/v0.4.1).
 The processed external evaluation panels used in the current manuscript are
 included under `data/processed/` because they are small, fixed analysis inputs;
 the earlier ECHA-only tables are retained for historical compatibility.
@@ -222,7 +222,7 @@ molecular-input eligibility rule:
 
 ```bash
 conda run -n ecoood python scripts/audit_benchmark_integrity.py \
-  --data path/to/EcoOOD_benchmark_snapshot_structured.csv \
+  --data data/strict_input_benchmark.csv \
   --output-dir outputs/integrity_audit \
   --strict-eligible-output outputs/integrity_audit/strict_input_benchmark.csv
 ```
@@ -234,10 +234,6 @@ and generalized structures containing dummy atoms (30 records, nine chemicals)
 were excluded before refitting. The release contains the exclusion ledger,
 split assignments and source-reference grouping audit. All primary and
 predictor-family results were refitted on this table.
-
-The five unparseable records in the original benchmark can be reproduced only with the
-explicit `--allow-legacy-structure-placeholder` flag. The flag is disabled by
-default and is not used by the current application workflow.
 
 Run the fixed seed panel on the audited molecular-input table:
 
@@ -274,7 +270,7 @@ conda run -n ecoood python scripts/analyze_full_review_workload.py \
 ```
 
 Reproduce the fixed 1, 10, and 100 mg/L acute-effect screening comparisons
-from the inputs in the v0.4.0 release archive:
+from the inputs in the v0.4.1 release archive:
 
 ```bash
 conda run -n ecoood python scripts/analyze_absolute_hazard_thresholds.py \
@@ -294,7 +290,7 @@ Run input-feature, molecular-parser, and leakage controls:
 
 ```bash
 conda run -n ecoood python scripts/run_integrity_sensitivity.py \
-  --data path/to/EcoOOD_benchmark_snapshot_structured.csv \
+  --data data/strict_input_benchmark.csv \
   --output-dir outputs/integrity_sensitivity
 ```
 
@@ -302,7 +298,7 @@ Evaluate endpoint-specific concern cutoffs fixed from calibration partitions:
 
 ```bash
 conda run -n ecoood python scripts/analyze_calibration_frozen_thresholds.py \
-  --data path/to/EcoOOD_benchmark_snapshot_structured.csv \
+  --data data/strict_input_benchmark.csv \
   --prediction-root outputs/integrity_benchmark \
   --output-dir outputs/calibration_cutoff_sensitivity
 ```
@@ -312,7 +308,7 @@ publication year from predictor and reliability inputs:
 
 ```bash
 conda run -n ecoood python scripts/analyze_temporal_without_publication_year.py \
-  --data path/to/EcoOOD_benchmark_snapshot_structured.csv \
+  --data data/strict_input_benchmark.csv \
   --output-dir outputs/temporal_without_publication_year
 ```
 
