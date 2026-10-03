@@ -10,7 +10,7 @@ This directory contains the small public demo input used by AquaTriage examples 
 tests, together with the field-level manifest for the current application
 configuration. The strict benchmark, fixed cutoffs, case-level predictions,
 and compact analysis tables are available in the
-[v0.3.0 analysis release](https://github.com/bubaizhanshen/AquaTriage/releases/tag/v0.3.0).
+[v0.4.0 analysis release](https://github.com/bubaizhanshen/AquaTriage/releases/tag/v0.4.0).
 
 ## Layout
 
@@ -27,14 +27,18 @@ and compact analysis tables are available in the
   extension sample selected from chemical identity and endpoint availability
   before toxicity values or model predictions were examined
 - `feature_manifest.csv`: field names, roles, cardinalities, and missingness
-  rates after applying the current molecular-input and feature rules (4,611
-  records; 801 chemicals); publication year and the bioactivity coverage count
+  rates after applying the current molecular-input and feature rules (4,519
+  records; 775 chemicals); publication year and the bioactivity coverage count
   are audit-only fields
+- `bioactivity_feature_manifest.csv`: the 34 retained assay summaries, original
+  source columns, scales, aggregation rules, observed coverage and code locations
 - `raw/`: provider downloads created by the source-specific fetch scripts
 - `processed/`: locally built benchmark tables and feature caches
 
-The primary prediction table contains 4,611 records from 801 chemicals under
+The primary prediction table contains 4,519 records from 775 chemicals under
 the strict molecular-input configuration described in the feature manifest.
+Unverified PubChem mappings and generalized structures with dummy atoms are
+excluded before prediction. Their source-linked audit is included in the release.
 The expanded external panel contains derived quantitative records used in the
 current manuscript analysis and retains source identifiers plus available source
 URLs. It contains no raw dossier pages. The expanded panel is identity-disjoint from the

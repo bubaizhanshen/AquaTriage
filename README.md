@@ -70,7 +70,7 @@ tests/                  Unit and regression tests
 Generated benchmark outputs are stored locally under `outputs/`. The current
 strict-input benchmark, frozen cutoffs, case-level predictions, and compact
 analysis tables are distributed through the
-[v0.3.0 analysis release](https://github.com/bubaizhanshen/AquaTriage/releases/tag/v0.3.0).
+[v0.4.0 analysis release](https://github.com/bubaizhanshen/AquaTriage/releases/tag/v0.4.0).
 The processed external evaluation panels used in the current manuscript are
 included under `data/processed/` because they are small, fixed analysis inputs;
 the earlier ECHA-only tables are retained for historical compatibility.
@@ -206,11 +206,11 @@ conda run -n ecoood python scripts/run_benchmark.py \
 
 ## Reproduce the Primary Benchmark
 
-The primary benchmark is the finalized strict-input table containing 4,611
-records from 801 chemicals. Its SHA-256 checksum is:
+The primary benchmark is the identity-corrected strict-input table containing
+4,519 records from 775 chemicals. Its SHA-256 checksum is:
 
 ```text
-273be0b1c3e34f7a9d9665675049b63f6cd5ae05393027487a98945388074c42
+dfe80e979d3a5594353120eb2b28b9b2429f66ba12a5ba7338cd119060a8e04e
 ```
 
 The primary benchmark uses RDKit 2024.03.2. Scaffold generation can differ
@@ -227,10 +227,13 @@ conda run -n ecoood python scripts/audit_benchmark_integrity.py \
   --strict-eligible-output outputs/integrity_audit/strict_input_benchmark.csv
 ```
 
-The finalized rule retains 4,611 records from 801 chemicals. Under RDKit
-2024.03.2, it reclassifies 326 records with carbon-free structures and five
-records with unparseable structures to `withhold/review`. All primary benchmark
-settings are fitted on this strict table.
+The finalized rule retains 4,519 records from 775 chemicals. It requires a
+resolved identity and a carbon-containing, parseable, fixed-composition
+structure. Unverified PubChem test-material mappings (62 records, 17 chemicals)
+and generalized structures containing dummy atoms (30 records, nine chemicals)
+were excluded before refitting. The release contains the exclusion ledger,
+split assignments and source-reference grouping audit. All primary and
+predictor-family results were refitted on this table.
 
 The five unparseable records in the original benchmark can be reproduced only with the
 explicit `--allow-legacy-structure-placeholder` flag. The flag is disabled by
@@ -271,7 +274,7 @@ conda run -n ecoood python scripts/analyze_full_review_workload.py \
 ```
 
 Reproduce the fixed 1, 10, and 100 mg/L acute-effect screening comparisons
-from the inputs in the v0.3.0 release archive:
+from the inputs in the v0.4.0 release archive:
 
 ```bash
 conda run -n ecoood python scripts/analyze_absolute_hazard_thresholds.py \

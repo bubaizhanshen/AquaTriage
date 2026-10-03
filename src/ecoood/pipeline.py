@@ -552,7 +552,7 @@ def run_single_experiment(
                 ood_scores=test_score if np.any(split_indices.test_is_ood) else np.array([]),
             ),
         }
-        if method == "ecoood":
+        if method == "prediction_error_risk":
             row.update({f"meta_{key}": value for key, value in scorer.diagnostics().items()})
         score_rows.append(row)
     score_summary = pd.DataFrame(score_rows)
@@ -562,6 +562,15 @@ def run_single_experiment(
         save_metrics(metrics, base / "metrics.json")
         save_predictions(predictions, base / "predictions.csv")
         save_predictions(score_summary, base / "ood_score_summary.csv")
+        calibration_predictions = calib_df.copy()
+        calibration_predictions["y_true"] = calib_df[schema.target].to_numpy()
+        calibration_predictions["y_pred"] = calib_pred.mean
+        calibration_predictions["model_std"] = calib_pred.std
+        for column in calib_components.columns:
+            calibration_predictions[column] = calib_components[column].to_numpy()
+        for method, (calibration_score, _) in score_specs.items():
+            calibration_predictions[method] = calibration_score
+        save_predictions(calibration_predictions, base / "calibration_predictions.csv")
         if not meta_bootstrap.empty:
             save_predictions(meta_bootstrap, base / "calibration_meta_bootstrap.csv")
     return metrics, predictions, score_summary

@@ -44,12 +44,15 @@ def main() -> None:
     parser.add_argument("--fixed-results", type=Path, required=True)
     parser.add_argument("--review-results", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--version", default="v0.4.0")
+    parser.add_argument("--analysis-root", type=Path)
+    parser.add_argument("--bioactivity-manifest", type=Path)
     args = parser.parse_args()
 
     benchmark = pd.read_csv(args.benchmark, usecols=["chemical_id"])
     external = pd.read_csv(args.external_panel, usecols=["chemical_id", "case_id"])
-    if (len(benchmark), benchmark.chemical_id.nunique()) != (4611, 801):
-        raise ValueError("Primary benchmark must contain 4611 cases from 801 chemicals")
+    if (len(benchmark), benchmark.chemical_id.nunique()) != (4519, 775):
+        raise ValueError("Identity-corrected primary benchmark must contain 4519 cases from 775 chemicals")
     if (len(external), external.chemical_id.nunique()) != (1027, 441):
         raise ValueError("External panel must contain 1027 cases from 441 chemicals")
     if external.case_id.duplicated().any():
@@ -70,24 +73,73 @@ def main() -> None:
         "tables/review/queue_events.csv": args.review_results / "queue_events.csv",
         "tables/review/workload_areas.csv": args.review_results / "workload_areas.csv",
     }
+    if args.analysis_root:
+        entries.update({
+            "data/split_assignments.csv":args.analysis_root/"identity_refit_split_assignments.csv",
+            "data/feature_manifest.csv":args.analysis_root/"feature_manifest.csv",
+            "audit/excluded_identity_records.csv":args.analysis_root/"excluded_identity_records.csv",
+            "audit/pubchem_identity_adjudication.csv":args.analysis_root/"pubchem_identity_adjudication.csv",
+            "audit/source_reference_groups.csv":args.analysis_root/"reference_holdout/row_reference_annotations.csv",
+            "tables/reference_holdout_metrics.csv":args.analysis_root/"reference_holdout/benchmark_summary_agg.csv",
+            "tables/predictor_family_and_controls.csv":args.analysis_root/"results/dependent_metrics.csv",
+            "tables/predictor_family_review.csv":args.analysis_root/"results/dependent_review.csv",
+            "tables/primary_prediction_metrics.csv":args.analysis_root/"identity_refit_metrics.csv",
+            "tables/nominal_coverage.csv":args.analysis_root/"results/nominal_detailed.csv",
+            "tables/risk_component_sensitivity.csv":args.analysis_root/"results/score_sensitivities.csv",
+            "tables/local_interval_recalibration.csv":args.analysis_root/"results/fewshot_detailed.csv",
+            "tables/bioactivity_feature_manifest.csv":args.bioactivity_manifest or ROOT/"data/bioactivity_feature_manifest.csv",
+        })
+        table_names = (
+            "core_summary", "endpoint_summary", "ablation_summary",
+            "score_detailed", "species_overlap", "partition_audit",
+            "primary_quantile_sensitivity", "primary_endpoint_breadth",
+            "component_association", "component_correlation",
+            "expanded_external_aurc_summary", "expanded_external_capture_summary",
+            "expanded_external_bootstrap_summary", "illustrative_disagreements",
+        )
+        entries.update({
+            f"tables/{name}.csv": args.analysis_root / "results" / f"{name}.csv"
+            for name in table_names
+        })
+        entries.update({
+            "audit/duplicate_audit.csv": args.analysis_root / "duplicate_audit.csv",
+            "audit/curation_counts.json": args.analysis_root / "curation_counts.json",
+            "tables/conditional_margin_summary.json":
+                args.analysis_root / "results/conditional_margin_summary.json",
+            "tables/external_chemical_level_summary.csv":
+                args.analysis_root / "external_refits/external_chemical_level_burden_summary.csv",
+        })
+        for size in (20, 50):
+            for name in (
+                "comparisons_summary", "paired_summary", "selection_audit",
+                "selection_frequency", "comparisons_all",
+            ):
+                filename = f"external_deployment_{name}.csv"
+                entries[f"tables/development_{size}/{filename}"] = (
+                    args.analysis_root / "results" / f"development_{size}" / filename
+                )
     for name, path in entries.items():
         if not path.is_file():
             raise FileNotFoundError(f"{name}: {path}")
 
     manifest = {
-        "release": "v0.3.0",
-        "primary_benchmark": {"cases": 4611, "chemicals": 801},
+        "release": args.version,
+        "primary_benchmark": {"cases": 4519, "chemicals": 775},
         "external_panel": {"cases": 1027, "chemicals": 441},
         "files": [
             {"path": name, "bytes": path.stat().st_size, "sha256": sha256(path)}
             for name, path in entries.items()
         ],
     }
-    readme = """# AquaTriage analysis data v0.3.0
+    readme = """# AquaTriage analysis data v0.4.0
 
-This archive contains the strict-input 4611-case benchmark, the 1027-case
+This archive contains the identity-corrected 4519-case benchmark, the 1027-case
 external panel, frozen calibration cutoffs, case-level predictions, and compact
 tables for the review-allocation and fixed acute-hazard analyses.
+Unconfirmed PubChem test-material mappings and generalized structures with
+dummy atoms were removed before refitting. Split assignments, feature
+definitions, source-reference groups, predictor-family comparisons and
+conditional sensitivity results are included in the audit and tables folders.
 
 Clone https://github.com/bubaizhanshen/AquaTriage, install its environment, and
 run the fixed 1 mg/L analysis with:

@@ -53,6 +53,8 @@ CACHE_COLUMNS = [
     "inchikey",
     "resolved",
     "resolution_source",
+    "identity_verified",
+    "identity_evidence_url",
 ]
 
 
@@ -162,6 +164,9 @@ def quality_filter(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def pubchem_url(identifier: str) -> str:
+    digits = str(identifier).strip().replace("-", "")
+    if digits.isdigit() and 5 <= len(digits) <= 10:
+        identifier = f"{digits[:-3]}-{digits[-3:-1]}-{digits[-1]}"
     fields = ",".join(PUBCHEM_FIELDS)
     return f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{quote(identifier)}/property/{fields}/CSV"
 
@@ -182,6 +187,11 @@ def fetch_pubchem(identifier: str, chemical_name: str, timeout: int = 30) -> dic
             lines = list(csv.DictReader(response.text.splitlines()))
             if not lines:
                 continue
+            # A name or CAS lookup can include a parent ion, several salts, or
+            # different isomers. Row order is not an identity-resolution rule.
+            keys = {row.get("InChIKey", "") for row in lines}
+            if len(keys) != 1 or "" in keys:
+                continue
             payload = lines[0]
             return {
                 "cas_number": identifier,
@@ -194,6 +204,8 @@ def fetch_pubchem(identifier: str, chemical_name: str, timeout: int = 30) -> dic
                 "inchikey": payload.get("InChIKey", ""),
                 "resolved": True,
                 "resolution_source": "pubchem",
+                "identity_verified": False,
+                "identity_evidence_url": "",
             }
         except requests.RequestException:
             time.sleep(0.2)
@@ -209,6 +221,8 @@ def fetch_pubchem(identifier: str, chemical_name: str, timeout: int = 30) -> dic
         "inchikey": "",
         "resolved": False,
         "resolution_source": "",
+        "identity_verified": False,
+        "identity_evidence_url": "",
     }
 
 
@@ -242,7 +256,7 @@ def enrich_structures(
         if resolved_paths:
             dsstox_matches = resolve_chemical_index_from_sources(chemicals, resolved_paths)
             if not dsstox_matches.empty:
-                cache = pd.concat([cache, dsstox_matches[CACHE_COLUMNS]], ignore_index=True)
+                cache = pd.concat([cache, dsstox_matches.reindex(columns=CACHE_COLUMNS)], ignore_index=True)
                 cache = cache.drop_duplicates("cas_number", keep="last")
 
     resolved_cache = cache[cache["resolved"].fillna("").astype(str).str.lower() == "true"].copy()
@@ -267,12 +281,30 @@ def enrich_structures(
     return cache[CACHE_COLUMNS].drop_duplicates("cas_number", keep="last")
 
 
+def _is_single_molecule_inner_salt(name: str, molecule: Chem.Mol) -> bool:
+    if not re.search(r"\binner[\s-]+salt\b", name, flags=re.IGNORECASE):
+        return False
+    charges = [atom.GetFormalCharge() for atom in molecule.GetAtoms()]
+    return (
+        len(Chem.GetMolFrags(molecule)) == 1
+        and sum(charges) == 0
+        and any(charge > 0 for charge in charges)
+        and any(charge < 0 for charge in charges)
+    )
+
+
 def deterministic_rejection_flag(row: pd.Series) -> bool:
+    source = str(row.get("structure_source", row.get("resolution_source", ""))).lower()
+    if source == "pubchem":
+        verified = str(row.get("identity_verified", "")).strip().lower()
+        evidence = str(row.get("identity_evidence_url", "")).strip()
+        if verified not in {"true", "1"} or not evidence.startswith(("https://", "http://")):
+            return True
     group = str(row.get("chemical_class", "")).strip().lower()
     name = str(row.get("chemical_name", "")).lower()
     if any(keyword in group for keyword in DETERMINISTIC_REJECTION_GROUP_KEYWORDS):
         return True
-    if any(token in name for token in ["mixture", "unknown", "inorganic", "organomet", "salt"]):
+    if any(token in name for token in ["mixture", "unknown", "inorganic", "organomet"]):
         return True
     smiles = str(row.get("smiles", "")).strip()
     if not smiles:
@@ -281,7 +313,13 @@ def deterministic_rejection_flag(row: pd.Series) -> bool:
         molecule = Chem.MolFromSmiles(smiles)
     if molecule is None:
         return True
+    # Generalized/R-group structures do not define a fixed test substance.
+    if any(atom.GetAtomicNum() == 0 for atom in molecule.GetAtoms()):
+        return True
     if not any(atom.GetAtomicNum() == 6 for atom in molecule.GetAtoms()):
+        return True
+    # An inner salt is one zwitterionic molecule, not a separate counterion salt.
+    if "salt" in name and not _is_single_molecule_inner_salt(name, molecule):
         return True
     return False
 
@@ -469,6 +507,8 @@ def build_dataset(
         "doi",
         "source",
         "structure_source",
+        "identity_verified",
+        "identity_evidence_url",
         "chemical_class",
         "toxicity_value",
         "toxicity_unit",

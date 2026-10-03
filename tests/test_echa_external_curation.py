@@ -8,6 +8,7 @@ from scripts.build_echa_pmra_clean_panel import (
 from scripts.build_echa_pmra_external_rows import (
     parse_effect_value, parse_duration_hours, section_anchor_documents, linked_field_documents,
 )
+from scripts.build_ecotox_dataset import deterministic_rejection_flag
 
 
 def test_study_links_without_optional_icons_are_retained() -> None:
@@ -113,3 +114,19 @@ def test_external_identity_gate_rejects_variable_composition_surrogates() -> Non
     assert not has_resolved_molecular_identity(reaction_product)
     assert not has_resolved_molecular_identity(cxsmiles)
     assert not has_resolved_molecular_identity(no_inchikey)
+
+
+def test_inner_salt_passes_internal_and_external_molecular_checks() -> None:
+    row = pd.Series(
+        {
+            "chemical_class": "unclassified",
+            "chemical_name": (
+                "1-Dodecanaminium, N-(carboxymethyl)- N,N-dimethyl-, inner salt"
+            ),
+            "smiles": "CCCCCCCCCCCC[N+](C)(C)CC([O-])=O",
+            "inchikey": "DVEKCXOJTLDBFE-UHFFFAOYSA-N",
+        }
+    )
+    assert not deterministic_rejection_flag(row)
+    assert has_usable_molecular_representation(row["smiles"])
+    assert has_resolved_molecular_identity(row)

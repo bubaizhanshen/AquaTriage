@@ -196,12 +196,33 @@ def _attach_reference_metadata(df: pd.DataFrame, annotations: ReferenceAnnotatio
     row_meta = (
         joined.groupby("proc_row", as_index=False)
         .agg(
-            reference_number=("reference_number", "first"),
+            reference_numbers=("reference_number", _collapse),
             test_id=("test_id", _collapse),
             study_type=("study_type", _collapse),
             test_location=("test_location", _collapse),
             exposure_type=("exposure_type", _collapse),
         )
+    )
+    # Ambiguous exact matches must not place a shared reference in two folds.
+    parent: dict[str, str] = {}
+
+    def root(reference: str) -> str:
+        parent.setdefault(reference, reference)
+        while parent[reference] != reference:
+            parent[reference] = parent[parent[reference]]
+            reference = parent[reference]
+        return reference
+
+    for references in row_meta["reference_numbers"].str.split(";"):
+        anchor = root(references[0])
+        for reference in references[1:]:
+            other = root(reference)
+            if anchor != other:
+                smaller, larger = sorted((anchor, other))
+                parent[larger] = smaller
+                anchor = smaller
+    row_meta["reference_number"] = row_meta["reference_numbers"].map(
+        lambda value: root(value.split(";")[0])
     )
 
     out = proc.merge(row_meta, on="proc_row", how="left")
@@ -215,7 +236,11 @@ def compute_seed_metrics(
     seed: int,
     ensemble_n_jobs: int = 5,
 ) -> tuple[dict[str, float | int | str], pd.DataFrame]:
-    feature_builder = EcoFeatureBuilder(schema=DEFAULT_SCHEMA)
+    feature_builder = EcoFeatureBuilder(
+        schema=DEFAULT_SCHEMA,
+        include_study_year=False,
+        recompute_rdkit_logp=True,
+    )
     train_bundle = feature_builder.fit_transform(train_df)
     calib_bundle = feature_builder.transform(calib_df)
     test_bundle = feature_builder.transform(test_df)
@@ -258,7 +283,9 @@ def compute_seed_metrics(
         model_std=calib_pred.std,
     )
 
-    ad_scorer = ApplicabilityDomainScorer().fit(train_bundle)
+    ad_scorer = ApplicabilityDomainScorer().fit(
+        train_bundle, chemical_ids=train_df[DEFAULT_SCHEMA.chemical_id]
+    )
     test_ad = ad_scorer.predict(
         test_bundle,
         model_std=test_pred.std,
@@ -506,10 +533,10 @@ def main() -> None:
     pd.DataFrame([annotations.dataset_metadata]).to_csv(out_dir / "dataset_reference_metadata.csv", index=False)
 
     notes = [
-        "Reference-holdout validation groups rows by ECOTOX reference_number after matching processed benchmark rows back to raw ECOTOX records.",
+        "Reference holdout groups all matching ECOTOX reference numbers into connected components; references connected by an ambiguous exact match remain in one partition.",
         f"Structured benchmark path: {args.data_path}.",
         f"Structured rows matched to reference metadata: {len(df)}.",
-        f"Unique reference_numbers in structured benchmark: {df['reference_number'].nunique()}.",
+        f"Connected reference groups in the benchmark: {df['reference_number'].nunique()}.",
         f"Unique test_ids represented: {row_meta['test_id'].replace('', pd.NA).nunique(dropna=True)}.",
         f"Seeds evaluated in this run: {', '.join(str(seed) for seed in args.seeds)}.",
         "This validation approximates leave-study-out transfer within ECOTOX, not an independent external dataset.",

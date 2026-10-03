@@ -109,7 +109,7 @@ def false_omission_rate(
 def load_aurc(root: Path, model: str) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     methods = {
-        "full": "ecoood",
+        "full": "prediction_error_risk",
         **{
             component: f"prediction_error_risk_minus_component_{component}"
             for component in COMPONENTS

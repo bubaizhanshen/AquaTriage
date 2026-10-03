@@ -35,7 +35,7 @@ def _candidate(value: str) -> tuple[str, str]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Apply the fixed EcoOOD signal-selection and screening-routing protocol "
+            "Apply the AquaTriage signal-selection and screening-routing protocol "
             "to a chemical-level scored queue."
         )
     )

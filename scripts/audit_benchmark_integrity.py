@@ -97,7 +97,11 @@ def _source_or_derivation(column: str) -> str:
 
 def build_feature_manifest(df: pd.DataFrame) -> pd.DataFrame:
     working = attach_rdkit_descriptors(df, DEFAULT_SCHEMA)
-    builder = EcoFeatureBuilder(schema=DEFAULT_SCHEMA).fit(working)
+    builder = EcoFeatureBuilder(
+        schema=DEFAULT_SCHEMA,
+        include_study_year=False,
+        recompute_rdkit_logp=True,
+    ).fit(working)
     rows: list[dict[str, object]] = []
     for column in working.columns:
         block, included = _feature_block(builder, column)
@@ -200,17 +204,23 @@ def strict_input_eligibility_audit(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.D
     """Apply the finalized molecular-input gate and return retained and rejected rows."""
 
     def rejection_reason(row: pd.Series) -> str:
+        from scripts.build_ecotox_dataset import deterministic_rejection_flag
+
         chemical_class = str(row.get("chemical_class", "")).strip().lower()
         chemical_name = str(row.get(DEFAULT_SCHEMA.chemical_name, "")).strip().lower()
         if any(token in chemical_class for token in STRICT_REJECTION_GROUP_KEYWORDS):
             return "listed metal or inorganic class"
-        if any(token in chemical_name for token in STRICT_REJECTION_NAME_TOKENS):
+        if any(token in chemical_name for token in STRICT_REJECTION_NAME_TOKENS[:-1]):
             return "predefined name token"
         molecule = smiles_to_mol(row.get(DEFAULT_SCHEMA.smiles))
         if molecule is None:
             return "missing or unparseable structure"
+        if any(atom.GetAtomicNum() == 0 for atom in molecule.GetAtoms()):
+            return "generalized structure containing dummy atoms"
         if not any(atom.GetAtomicNum() == 6 for atom in molecule.GetAtoms()):
             return "carbon-free structure"
+        if deterministic_rejection_flag(row):
+            return "unverified fallback identity or unresolved salt form"
         return ""
 
     reasons = df.apply(rejection_reason, axis=1)
