@@ -33,7 +33,8 @@ description and README. A local `127.0.0.1` address is not a public app URL.
 
 - `app/requirements.txt`: pinned Python dependencies, colocated with the
   entrypoint so Community Cloud selects them.
-- `packages.txt`: the LightGBM OpenMP runtime.
+- `packages.txt`: the LightGBM OpenMP runtime and RDKit drawing's X11 runtime
+  libraries. These are needed even when no graphical desktop is running.
 - `.streamlit/config.toml`: UI and server settings; CORS and XSRF protection stay on.
 - `models/review-v1/`: fitted reference and checksum/configuration manifest.
 - `data/examples/review_queue.csv`: 23 real input cases for 12 chemicals,
@@ -61,6 +62,17 @@ The public model is cached across sessions. Molecule images have a bounded
 one-hour cache. No user-supplied executable model file is loaded.
 
 The cloud entrypoint directs application temporary files to `tmp/cloud/`.
+
+## Troubleshoot startup
+
+An import failure at `rdkit.Chem.Draw.rdMolDraw2D` can indicate missing system
+drawing libraries. Keep the root `packages.txt` in the deployed branch; Python
+dependencies alone do not install these libraries. After a dependency update,
+wait for the rebuild and check the application logs. Reboot the app from
+**Manage app** if it is still running the previous environment.
+
+The hosted-app CI job uses a minimal Debian container, installs `packages.txt`,
+and tests both molecular image generation and the complete review calculation.
 
 ## Verify before changing the model
 

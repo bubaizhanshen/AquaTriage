@@ -23,6 +23,7 @@ jobs:
 
   hosted-app:
     runs-on: ubuntu-latest
+    container: python:3.11-slim-bookworm
     env:
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONPATH: ${{ github.workspace }}/src
@@ -35,11 +36,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Prepare runtime directory
         run: mkdir -p tmp/ci
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: app/requirements.txt
+      - name: Install declared system dependencies
+        run: |
+          apt-get update
+          xargs -r apt-get install -y --no-install-recommends < packages.txt
       - name: Install hosted environment
         run: python -m pip install -r app/requirements.txt pytest
       - name: Test application and reference

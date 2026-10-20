@@ -1,4 +1,5 @@
 """Hosted-entrypoint checks; run with app/requirements.txt installed."""
+import io
 from pathlib import Path
 import tempfile
 
@@ -8,6 +9,20 @@ pytest.importorskip("streamlit")
 from streamlit.testing.v1 import AppTest
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_rdkit_molecular_drawing_runtime():
+    from PIL import Image
+    from rdkit import Chem
+    from rdkit.Chem.Draw import rdMolDraw2D
+
+    drawer = rdMolDraw2D.MolDraw2DCairo(440, 330)
+    drawer.drawOptions().useBWAtomPalette()
+    rdMolDraw2D.PrepareAndDrawMolecule(drawer, Chem.MolFromSmiles("CC(=O)Oc1ccccc1C(=O)O"))
+    drawer.FinishDrawing()
+    image = Image.open(io.BytesIO(drawer.GetDrawingText())).convert("RGB")
+    assert image.size == (440, 330)
+    assert any(low < high for low, high in image.getextrema())
 
 
 @pytest.fixture
