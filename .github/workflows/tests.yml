@@ -43,4 +43,4 @@ jobs:
       - name: Install hosted environment
         run: python -m pip install -r app/requirements.txt pytest
       - name: Test application and reference
-        run: python -m pytest tests/test_review_workflow.py tests/test_review_cloud.py -q
+        run: python -m pytest tests/test_review_workflow.py tests/test_review_cloud.py tests/test_review_presentation.py -q

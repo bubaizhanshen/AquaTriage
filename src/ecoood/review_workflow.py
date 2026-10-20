@@ -235,7 +235,9 @@ def prepare_inputs(frame: pd.DataFrame, *, training: bool = False):
     for column in ("duration_h", *CONTEXT_NUMERIC, *BIOACTIVITY):
         accepted[column] = pd.to_numeric(accepted[column], errors="coerce")
     for column in ("species", "endpoint", "medium", *TAXONOMY):
-        accepted[column] = accepted[column].map(lambda x: str(x).strip() if _present(x) else np.nan)
+        accepted[column] = accepted[column].map(
+            lambda x: str(x).strip() if _present(x) else np.nan
+        ).astype(object)
     accepted["chemical_name"] = accepted["chemical_name"].where(
         accepted["chemical_name"].map(_present), accepted["chemical_id"]
     )
@@ -494,17 +496,22 @@ def run_review(
     return ReviewRun(cases, endpoints, ranked, rejected, neighbors, manifest)
 
 
+def export_csv(table: pd.DataFrame) -> bytes:
+    """Escape spreadsheet formulas while preserving numeric columns."""
+    table = table.copy()
+    for column in table.select_dtypes(include=["object", "string"]):
+        table[column] = table[column].map(
+            lambda v: "'" + v if isinstance(v, str) and v.lstrip().startswith(("=", "+", "-", "@")) else v
+        )
+    return table.to_csv(index=False).encode("utf-8")
+
+
 def export_run(run: ReviewRun) -> bytes:
     """CSV cells are escaped for spreadsheet formula injection on opening."""
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
         for name in ("cases", "endpoints", "chemicals", "rejected", "neighbors"):
-            table = getattr(run, name).copy()
-            for column in table.select_dtypes(include=["object", "string"]):
-                table[column] = table[column].map(
-                    lambda v: "'" + v if isinstance(v, str) and v.lstrip().startswith(("=", "+", "-", "@")) else v
-                )
-            archive.writestr(f"{name}.csv", table.to_csv(index=False))
+            archive.writestr(f"{name}.csv", export_csv(getattr(run, name)))
         archive.writestr("run_manifest.json", json.dumps(run.manifest, indent=2, allow_nan=False))
     return output.getvalue()
 

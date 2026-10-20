@@ -22,6 +22,18 @@ validation.
 
 ## Inputs
 
+Choose the example queue, enter individual cases, or upload a CSV. The entry
+form collects a confirmed structure and identifier, a species, an endpoint,
+and the actual exposure duration. Species can be selected from the reference
+or entered by scientific name. Each added case uses the same checks as a CSV
+row. Optional test conditions can be supplied in the form; the full CSV template
+also accepts taxonomic ranks and bioactivity measurements.
+
+Before running, the workspace reports eligible chemicals, rejected cases, and
+the resulting number of review places. Unrecognized columns are identified
+and ignored. The Input checks tab provides rejection reasons and a downloadable
+issues table.
+
 One CSV row represents one chemical, species, endpoint, and set of test conditions.
 Repeated records are allowed; a chemical ID receives only one review place.
 Identifiers are read as text, preserving leading zeros.
@@ -75,7 +87,8 @@ building a reference from your own data.
 
 ## Fitting a reference
 
-The browser's **Fit from my data** option and the CLI use the same backend.
+The local browser's **Fit from my data** option and the CLI use the same backend.
+The public instance uses the installed reference and does not accept training jobs.
 The measured reference must include either:
 
 - `target_log_molar`: measured log10(mol/L); or
@@ -137,6 +150,25 @@ Partially rejected chemicals retain an explicit rejected-case count.
 
 ## Results
 
+The queue displays the active ranking measure. For omission review, it also
+shows the predicted concentration relative to the criterion and the
+prediction/criterion ratio. The proximity score is the base-10 logarithm of
+this ratio; smaller positive margins receive priority in the predicted-low-concern
+queue. Other ranking measures remain available in the expandable scores table.
+
+Each chemical's detail view includes its molecular structure, endpoint-specific
+concentrations, case results, and training neighbors. The endpoint chart uses
+a logarithmic mg/L axis and shows the criterion only for omission review.
+An unrepresented endpoint is marked as having no eligible input case, not
+assigned a concentration. Nearest neighbors are training cases in the full
+normalized input space, not necessarily distinct chemicals or structural analogs.
+
+The selected-chemicals CSV contains the full selected queue, regardless of the
+on-screen search filter. A separate text summary records the completed task,
+ranking rule, quota, units, and reference/input identifiers. Changing the input
+or settings marks the previous results as outdated and disables result downloads
+until the review is rerun.
+
 The downloaded ZIP contains:
 
 | File | Content |
@@ -180,6 +212,7 @@ The inference-only public entrypoint is `app/cloud.py`; see
 | Responsibility | File |
 | --- | --- |
 | Input contract, prediction, aggregation, ranking, export | `src/ecoood/review_workflow.py` |
+| Result labels, endpoint display data, and run summaries | `src/ecoood/review_presentation.py` |
 | Fitted preprocessing and Morgan fingerprints | `src/ecoood/features.py` |
 | Bootstrap prediction models | `src/ecoood/models.py` |
 | Block normalization and Tanimoto novelty | `src/ecoood/ad.py` |

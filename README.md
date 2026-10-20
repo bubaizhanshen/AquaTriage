@@ -11,9 +11,9 @@ a review objective, and set the number of chemicals to examine.
 The Python package remains importable as `ecoood`.
 
 [Open AquaTriage](https://aquatriage-a2twqtbbqxjy3fda7ya7ab.streamlit.app/)
-with the included example or upload a case-level CSV.
+with the included example, enter individual cases, or upload a case-level CSV.
 
-The [web workspace](docs/review_workspace.md) accepts case-level CSVs,
+The [web workspace](docs/review_workspace.md) accepts individual cases and CSVs,
 computes predictions and training-support measures, and exports the selected
 chemicals with endpoint-level results and rejection reasons. It uses a fitted
 reference model or, locally, a new reference fitted from the user's measured
@@ -127,8 +127,8 @@ python -m pip install -r app/requirements.txt
 python scripts/serve_review.py --port 8501
 ```
 
-Open `http://127.0.0.1:8501`. Use the included 12-chemical example queue or upload
-a CSV with your own confirmed chemical identities and test cases. The example
+Open `http://127.0.0.1:8501`. Use the included 12-chemical example queue, enter
+individual cases, or upload a CSV with confirmed chemical identities and test cases. The example
 contains real processed inputs but no measured outcomes; it demonstrates
 operation, not performance.
 

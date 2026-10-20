@@ -73,3 +73,48 @@ def test_cloud_objective_switch_and_quota_endpoints(cloud):
     run_button(cloud).click().run()
     assert not cloud.exception
     assert cloud.session_state["run"].manifest["review_count"] == 12
+
+
+def test_manual_entry_validation_and_count_quota(cloud):
+    next(w for w in cloud.button_group if w.label == "Input source").set_value("Enter cases").run()
+    assert not cloud.exception
+    assert run_button(cloud).disabled
+    next(w for w in cloud.button_group if w.label == "Review workload").set_value("Chemical count").run()
+    assert not cloud.exception
+    next(w for w in cloud.text_input if w.label == "Chemical identifier").set_value("example-001")
+    next(w for w in cloud.text_input if w.label == "Confirmed SMILES").set_value("CCO")
+    next(w for w in cloud.selectbox if w.label == "Species").select("Pimephales promelas")
+    next(w for w in cloud.button if w.label == "Add case").click().run()
+    assert not cloud.exception
+    assert cloud.error
+    assert run_button(cloud).disabled
+    assert next(w for w in cloud.text_input if w.label == "Confirmed SMILES").value == "CCO"
+    next(w for w in cloud.checkbox if "confirmed" in w.label).check()
+    next(w for w in cloud.button if w.label == "Add case").click().run()
+    assert not cloud.exception
+    assert not cloud.error
+    assert len(cloud.session_state["entered_cases"]) == 1
+    next(w for w in cloud.number_input if w.label == "Chemicals to review").set_value(1).run()
+    run_button(cloud).click().run()
+    assert not cloud.exception
+    result = cloud.session_state["run"]
+    assert result.manifest["eligible_chemicals"] == 1
+    assert result.manifest["review_count"] == 1
+    assert result.endpoints.endpoint.tolist() == ["fish_96h_lc50"]
+    next(w for w in cloud.button if w.label == "Clear").click().run()
+    assert not cloud.exception
+    assert not cloud.session_state["entered_cases"]
+    assert run_button(cloud).disabled
+
+
+def test_changed_settings_do_not_relabel_completed_run(cloud):
+    run_button(cloud).click().run()
+    next(s for s in cloud.selectbox if s.label == "Objective").select("Recover hazard omissions").run()
+    assert not cloud.exception
+    assert cloud.session_state["run"].manifest["task"] == "general_error"
+    assert any("previous run" in w.value for w in cloud.warning)
+    summary = next(
+        table.value for table in cloud.dataframe
+        if list(table.value.columns) == ["Setting", "Value"]
+    )
+    assert summary.set_index("Setting").loc["Review objective", "Value"] == "Check concentration accuracy"
