@@ -10,6 +10,9 @@ potential hazard omissions. Users supply chemical-species-test cases, choose
 a review objective, and set the number of chemicals to examine.
 The Python package remains importable as `ecoood`.
 
+[Open AquaTriage](https://aquatriage-a2twqtbbqxjy3fda7ya7ab.streamlit.app/)
+with the included example or upload a case-level CSV.
+
 The [web workspace](docs/review_workspace.md) accepts case-level CSVs,
 computes predictions and training-support measures, and exports the selected
 chemicals with endpoint-level results and rejection reasons. It uses a fitted
@@ -113,7 +116,11 @@ conda run -n ecoood pytest -q
 
 ## Open the Review Workspace
 
-Use Python 3.11 and install the application environment:
+Use the [public workspace](https://aquatriage-a2twqtbbqxjy3fda7ya7ab.streamlit.app/)
+without local installation. Hosted uploads are limited to 2 MB and 1000 cases
+per run; use the local application for confidential data or larger queues.
+
+For local use, install the application environment with Python 3.11:
 
 ```bash
 python -m pip install -r app/requirements.txt
@@ -125,9 +132,8 @@ a CSV with your own confirmed chemical identities and test cases. The example
 contains real processed inputs but no measured outcomes; it demonstrates
 operation, not performance.
 
-This address works on the machine running the server. For a public browser
-address without SSH or local installation, use the
-[cloud deployment instructions](docs/cloud_deployment.md).
+This local address works on the machine running the server. To publish a
+separate instance, follow the [cloud deployment instructions](docs/cloud_deployment.md).
 
 To fit your own reference locally:
 
@@ -147,7 +153,9 @@ python scripts/run_review_workflow.py review \
 ```
 
 See [inputs, units, outputs, and deployment](docs/review_workspace.md).
-The interface is local by default; no chemical data are sent to an external API.
+Local runs process inputs on the machine running the server; hosted runs
+process uploads on the hosting service. Neither sends chemical inputs to
+third-party prediction APIs.
 Model artifacts must be locally generated and trusted. The interface does not
 accept uploaded executable model files.
 

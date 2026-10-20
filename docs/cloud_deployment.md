@@ -1,5 +1,8 @@
 # Publish AquaTriage on Streamlit Community Cloud
 
+The [public workspace](https://aquatriage-a2twqtbbqxjy3fda7ya7ab.streamlit.app/)
+is available for example runs and small nonconfidential queues.
+
 The hosted entrypoint is `app/cloud.py`. It loads the bundled application
 reference and supports case uploads, prediction, ranking, and result download.
 It does not fit models on the public server. The local entrypoint,
