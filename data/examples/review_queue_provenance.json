@@ -1,0 +1,10 @@
+{
+  "purpose": "Example prediction inputs, not a performance demonstration",
+  "records": 23,
+  "chemicals": 12,
+  "source_input_sha256": "3762a3badc1c640a2fffae086c90bcd6325bead710f50c9dacc083656a4a05cf",
+  "source": "Processed external regulatory dataset distributed with AquaTriage",
+  "identity_attestation": "Uses identity mappings retained in the project's source-audited external dataset",
+  "selection": "First 12 eligible IDs in source order with names <=80 characters and structures <=50 heavy atoms; first case per chemical-endpoint. No outcomes used.",
+  "measured_outcomes_included": false
+}

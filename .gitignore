@@ -14,6 +14,9 @@ Thumbs.db
 .venv*/
 venv/
 env/
+.streamlit/secrets.toml
+.env
+.env.*
 
 # Raw downloads and caches
 data/raw/

@@ -1,0 +1,13 @@
+[server]
+headless = true
+maxUploadSize = 20
+enableXsrfProtection = true
+enableCORS = true
+fileWatcherType = "none"
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#127f83"

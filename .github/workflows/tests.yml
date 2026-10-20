@@ -20,3 +20,27 @@ jobs:
         run: pytest -q
       - name: Compile
         run: python -m compileall -q src scripts tests
+
+  hosted-app:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: ${{ github.workspace }}/src
+      TMPDIR: ${{ github.workspace }}/tmp/ci
+      TMP: ${{ github.workspace }}/tmp/ci
+      TEMP: ${{ github.workspace }}/tmp/ci
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare runtime directory
+        run: mkdir -p tmp/ci
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: app/requirements.txt
+      - name: Install hosted environment
+        run: python -m pip install -r app/requirements.txt pytest
+      - name: Test application and reference
+        run: python -m pytest tests/test_review_workflow.py tests/test_review_cloud.py -q

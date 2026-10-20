@@ -4,34 +4,38 @@
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-AquaTriage is a Python workflow for reliability assessment and review
-prioritization in aquatic ecotoxicity screening. It evaluates
-chemical-species-context cases before and after toxicity prediction and
-measures how often reliability signals place measured high-concern chemicals
-predicted as lower concern into review under a fixed review budget.
+AquaTriage produces chemical-level review lists from aquatic toxicity
+predictions. It distinguishes checking concentration accuracy from recovering
+potential hazard omissions. Users supply chemical-species-test cases, choose
+a review objective, and set the number of chemicals to examine.
 The Python package remains importable as `ecoood`.
 
-AquaTriage is the full assessment framework. The **calibration-trained
-prediction-error risk score** is one component of that framework: a logistic
-high-error ranking score fitted to calibration-fold residual labels. It is used
-for ranking and is not a calibrated error
-probability. The benchmark compares it with structural similarity,
-input-space distance, ensemble uncertainty, and comparison models trained on
-the same calibration residual labels.
+The [web workspace](docs/review_workspace.md) accepts case-level CSVs,
+computes predictions and training-support measures, and exports the selected
+chemicals with endpoint-level results and rejection reasons. It uses a fitted
+reference model or, locally, a new reference fitted from the user's measured
+data. The repository includes an inference-only
+[Streamlit cloud entrypoint](docs/cloud_deployment.md) and a versioned reference.
 
 ## Workflow
 
-1. Route unresolved identities, mixtures, and unsupported molecular
-   representations directly to `withhold/review`.
-2. Fit the toxicity predictor and reliability models using separate training
-   and calibration partitions.
-3. Quantify chemical, biological, contextual, bioactivity-proxy, and ensemble
-   uncertainty signals for scoreable cases.
-4. Rank predicted-low-concern chemicals by threshold proximity for the primary
-   omission-control objective; use a labeled development subset to compare
-   predefined reliability measures when that objective and data are available.
-5. Assign predictions to `screen now`, `lower priority`, `withhold/review`, or
-   `prioritize testing`.
+1. Check identity confirmation, molecular representation, endpoint, and duration.
+2. Transform eligible cases using the fitted training preprocessing and predict
+   effect concentrations with a five-member LightGBM ensemble.
+3. Calculate maximum-Tanimoto novelty, block-normalized kNN distance to training
+   cases, and raw ensemble standard deviation.
+4. Aggregate within chemical-endpoint groups, then rank unique chemical IDs.
+   Concentration-error review uses the whole eligible queue; hazard-omission
+   review considers predicted-low-concern chemicals first.
+5. Select the requested number of chemicals and export case predictions,
+   endpoint summaries, rankings, nearest training cases, and a run manifest.
+
+The task presets are block-normalized kNN for concentration-error review and
+threshold proximity for hazard-omission review. Alternative measures remain
+available for comparison; these presets are not claims of universal optimality.
+The review fraction can range from zero to one. The paper's 25% operating point
+is an example, not an application requirement. A chemical outside the selected
+queue is not thereby classified as safe or accurate.
 
 The current application predictor excludes ECOTOX reference publication year
 from model and reliability inputs; year is retained only for chronological
@@ -45,7 +49,7 @@ The standard case-level block-normalized kNN distance is a support-ranking
 candidate; the distinct-chemical version tests whether repeated records
 from frequently studied chemicals materially change the ranking.
 
-The current application prediction-error risk score uses eight predefined
+An auxiliary calibration-trained prediction-error risk score uses eight predefined
 signals. Chemical support is represented by a five-neighbor Tanimoto distance
 over distinct training chemicals and a shrinkage Mahalanobis descriptor
 distance. Biological support uses taxonomic distance based on the deepest
@@ -53,7 +57,9 @@ training-supported lineage rank. Test context is
 compared with a same-endpoint, missing-aware Gower distance and an explicit
 context-missingness fraction. Bioactivity-proxy support uses a missing-aware
 standardized distance over distinct chemicals and its missingness fraction.
-The final signal is bootstrap-ensemble SD. The original distance definitions,
+The final signal is bootstrap-ensemble SD. This auxiliary score and the earlier
+development-set selector are not required by the new review workspace.
+The original distance definitions,
 cosine fingerprint distance, and 1, 3, 5, and 10 neighbors are included in
 sensitivity analyses.
 
@@ -62,6 +68,9 @@ sensitivity analyses.
 ```text
 configs/                Fixed benchmark configurations
 data/                   Synthetic benchmark input and predictor field manifest
+app/                    Local and hosted review workspaces
+models/                 Versioned application reference
+docs/                   Input contract and application guide
 scripts/                Data preparation, benchmark, and audit entry points
 src/ecoood/             Python package
 tests/                  Unit and regression tests
@@ -102,9 +111,52 @@ Run the tests:
 conda run -n ecoood pytest -q
 ```
 
-## Apply AquaTriage to a New Screening Queue
+## Open the Review Workspace
 
-AquaTriage application uses a fixed candidate library, selection rule, and four
+Use Python 3.11 and install the application environment:
+
+```bash
+python -m pip install -r app/requirements.txt
+python scripts/serve_review.py --port 8501
+```
+
+Open `http://127.0.0.1:8501`. Use the included 12-chemical example queue or upload
+a CSV with your own confirmed chemical identities and test cases. The example
+contains real processed inputs but no measured outcomes; it demonstrates
+operation, not performance.
+
+This address works on the machine running the server. For a public browser
+address without SSH or local installation, use the
+[cloud deployment instructions](docs/cloud_deployment.md).
+
+To fit your own reference locally:
+
+```bash
+python scripts/run_review_workflow.py template --training --full --output training_template.csv
+python scripts/run_review_workflow.py fit --training measured_reference.csv --output tmp/platform/reference.joblib
+python scripts/serve_review.py --reference tmp/platform/reference.joblib
+```
+
+For batch operation:
+
+```bash
+python scripts/run_review_workflow.py review \
+  --reference models/review-v1/reference.joblib \
+  --queue data/examples/review_queue.csv \
+  --task general_error --fraction 0.25 --output tmp/review_results.zip
+```
+
+See [inputs, units, outputs, and deployment](docs/review_workspace.md).
+The interface is local by default; no chemical data are sent to an external API.
+Model artifacts must be locally generated and trusted. The interface does not
+accept uploaded executable model files.
+
+## Earlier Scored-Table Protocol
+
+This interface is retained for reproducing earlier development-set and
+four-route analyses. It is separate from the current case-level review workspace.
+
+The earlier application uses a fixed candidate library, selection rule, and four
 screening routes. A screening program supplies its concern rule, review fraction,
 review objective, and any available measurements from the intended screening setting.
 
