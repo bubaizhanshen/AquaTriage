@@ -77,6 +77,14 @@ wait for the rebuild and check the application logs. Reboot the app from
 The hosted-app CI job uses a minimal Debian container, installs `packages.txt`,
 and tests both molecular image generation and the complete review calculation.
 
+Keep source watching enabled for the hosted app. The UI adds `src/` to
+`PYTHONPATH` so Streamlit can invalidate imported application modules after an
+update; the watch list also includes the `app/` files executed by the cloud
+entrypoint. If an existing process reports a missing name from
+`ecoood.review_presentation` immediately after an update, it may still hold the
+previous module in memory. The UI reloads the pre-update presentation interface
+when required; **Manage app > Reboot** also starts a fresh process.
+
 ## Verify before changing the model
 
 Keep model/library versions aligned. Refit with the new environment if a

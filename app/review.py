@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import os
 from pathlib import Path
@@ -15,7 +16,12 @@ WORK = Path(os.environ.get("AQUATRIAGE_WORK_DIR", ROOT / "tmp" / "platform"))
 WORK.mkdir(parents=True, exist_ok=True, mode=0o700)
 for key in ("TMPDIR", "TMP", "TEMP", "XDG_CACHE_HOME", "MPLCONFIGDIR"):
     os.environ[key] = str(WORK)
-sys.path.insert(0, str(ROOT / "src"))
+SOURCE = str(ROOT / "src")
+if SOURCE not in sys.path:
+    sys.path.insert(0, SOURCE)
+pythonpath = [path for path in os.environ.get("PYTHONPATH", "").split(os.pathsep) if path]
+if SOURCE not in pythonpath:
+    os.environ["PYTHONPATH"] = os.pathsep.join([SOURCE, *pythonpath])
 CLOUD = os.environ.get("AQUATRIAGE_CLOUD") == "1"
 MAX_UPLOAD_MB = 2 if CLOUD else 20
 MAX_RECORDS = 1000 if CLOUD else 10000
@@ -31,6 +37,12 @@ from ecoood.review_workflow import (
     load_reference, prepare_inputs, read_input_csv, run_review,
     template_csv,
 )
+from ecoood import review_presentation as _presentation
+
+# Recover an older cached view module when a running host receives the new UI.
+if not all(hasattr(_presentation, name) for name in ("TASK_HELP", "chemical_review_details")):
+    importlib.reload(_presentation)
+
 from ecoood.review_presentation import (
     CHECK_LABELS, ENDPOINT_LABELS, RULE_HELP, RULE_LABELS, SCORE_LABELS, TASK_HELP, TASK_LABELS,
     chemical_review_details, endpoint_plot_table, review_queue_view, run_summary, summary_text,

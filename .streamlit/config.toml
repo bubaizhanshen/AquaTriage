@@ -3,7 +3,8 @@ headless = true
 maxUploadSize = 20
 enableXsrfProtection = true
 enableCORS = true
-fileWatcherType = "none"
+fileWatcherType = "auto"
+folderWatchList = ["app"]
 
 [browser]
 gatherUsageStats = false

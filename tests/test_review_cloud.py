@@ -32,6 +32,7 @@ def cloud(monkeypatch, tmp_path):
         "PYTHONDONTWRITEBYTECODE", "TMPDIR", "TMP", "TEMP",
         "XDG_CACHE_HOME", "MPLCONFIGDIR", "OMP_NUM_THREADS",
         "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+        "PYTHONPATH",
     ):
         monkeypatch.setenv(name, "")
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
@@ -46,7 +47,24 @@ def run_button(app):
     return next(button for button in app.button if button.label == "Run review")
 
 
+def test_cloud_recovers_presentation_cached_before_ui_update(cloud, monkeypatch):
+    from ecoood import review_presentation
+
+    # A running Cloud process can retain the previous module after a Git update.
+    monkeypatch.delattr(review_presentation, "TASK_HELP")
+    monkeypatch.delattr(review_presentation, "chemical_review_details")
+    cloud.run()
+    assert not cloud.exception
+    run_button(cloud).click().run()
+    assert not cloud.exception
+    assert cloud.session_state["run"].manifest["review_count"] == 3
+    assert "priority_reason" in review_presentation.review_queue_view(cloud.session_state["run"])
+
+
 def test_cloud_is_inference_only_and_loads_published_reference(cloud):
+    from streamlit import file_util
+
+    assert file_util.file_in_pythonpath(str(ROOT / "src/ecoood/review_presentation.py"))
     assert not any(r.label == "Training reference" for r in cloud.radio)
     assert not any(b.label == "Fit reference" for b in cloud.button)
     run_button(cloud).click().run()
@@ -59,6 +77,14 @@ def test_cloud_is_inference_only_and_loads_published_reference(cloud):
     assert result.manifest["rule"] == "block_knn"
     assert cloud.session_state["review_tab"] == "Review queue"
     assert cloud.session_state["queue_selected_only"] is True
+
+
+def test_hosted_config_watches_source_updates():
+    import tomllib
+
+    config = tomllib.loads((ROOT / ".streamlit/config.toml").read_text())
+    assert config["server"]["fileWatcherType"] == "auto"
+    assert "app" in config["server"]["folderWatchList"]
 
 
 def test_cloud_objective_switch_and_quota_endpoints(cloud):
