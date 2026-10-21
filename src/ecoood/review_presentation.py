@@ -13,8 +13,16 @@ ENDPOINT_LABELS = {
     "algae_72_96h_ec50": "Algal EC50 (72-96 h)",
 }
 TASK_LABELS = {
-    "general_error": "Check concentration accuracy",
-    "hazard_omission": "Recover hazard omissions",
+    "general_error": "Check prediction accuracy",
+    "hazard_omission": "Find potentially missed hazards",
+}
+TASK_HELP = {
+    "general_error": "Prioritize chemical predictions for checking their acute effect concentrations.",
+    "hazard_omission": (
+        "Prioritize chemicals predicted above the acute-effect criterion for checking "
+        "whether their measured concentration could be at or below it. Lower effect "
+        "concentrations indicate greater toxicity."
+    ),
 }
 RULE_LABELS = {
     "block_knn": "Distance to training cases",
@@ -89,6 +97,9 @@ def review_queue_view(run: ReviewRun) -> pd.DataFrame:
         f"Rank {int(rank)} of {n}; {allocation}. {reason}."
         for rank, reason in zip(table["rank"], table.selection_basis)
     ]
+    details = [_review_details(row, run.manifest) for _, row in table.iterrows()]
+    table["review_question"] = [detail["question"] for detail in details]
+    table["priority_reason"] = [detail["reason"] for detail in details]
     if run.manifest["task"] == "hazard_omission":
         table["concentration_criterion_mg_l"] = run.manifest["cutoff_mg_l"]
         table["criterion_position"] = np.where(
@@ -98,6 +109,45 @@ def review_queue_view(run: ReviewRun) -> pd.DataFrame:
             table["criterion_ratio"] = np.power(10.0, table.margin_log10)
         table["criterion_ratio"] = table.criterion_ratio.where(np.isfinite(table.criterion_ratio))
     return table
+
+
+def chemical_review_details(run: ReviewRun, chemical_id: str) -> dict[str, str]:
+    """Describe the completed ranking, without inferring measured toxicity or error."""
+    row = run.chemicals.set_index("chemical_id").loc[chemical_id]
+    return _review_details(row, run.manifest)
+
+
+def _review_details(row, manifest) -> dict[str, str]:
+    rule = manifest["rule"]
+    omission = manifest["task"] == "hazard_omission"
+    cutoff = manifest["cutoff_mg_l"]
+    question = "How accurate is the predicted acute effect concentration?"
+    if omission:
+        question = (
+            "How accurate is this already high-concern prediction?"
+            if row.predicted_high_concern else
+            f"Could the measured acute effect concentration be at or below {cutoff:g} mg/L?"
+        )
+    if rule == "threshold_proximity":
+        reason = (
+            f"Predicted concentration {row.prediction_mg_l:.3g} mg/L is above the "
+            f"{cutoff:g} mg/L criterion; smaller positive margins receive priority."
+        )
+    else:
+        reason = {
+            "block_knn": f"Training distance {row.block_knn:.3g}; larger distances receive priority.",
+            "similarity_ad": (
+                f"Structural novelty {row.similarity_ad:.3g}; lower similarity to training "
+                "chemicals receives priority."
+            ),
+            "ensemble_sd": f"Ensemble SD {row.ensemble_sd:.3g}; greater disagreement receives priority.",
+        }[rule]
+    if omission and row.predicted_high_concern:
+        reason = (
+            f"Predicted concentration {row.prediction_mg_l:.3g} mg/L already meets the "
+            f"{cutoff:g} mg/L high-concern criterion; ranked after the predicted-low-concern queue."
+        )
+    return {"question": question, "reason": reason}
 
 
 def endpoint_plot_table(run: ReviewRun, chemical_id: str) -> pd.DataFrame:

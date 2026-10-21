@@ -11,8 +11,13 @@ The workspace implements the two primary review tasks:
 
 | Task | Review population | Preset | User setting |
 | --- | --- | --- | --- |
-| Check concentration accuracy | All eligible chemicals | Block-normalized kNN | Review count or percentage |
-| Recover hazard omissions | Predicted-low-concern chemicals first | Threshold proximity | Concentration criterion and review count or percentage |
+| Check prediction accuracy | All eligible chemicals | Block-normalized kNN | Review count or percentage |
+| Find potentially missed hazards | Predicted-low-concern chemicals first | Threshold proximity | Concentration criterion and review count or percentage |
+
+Choose an objective and review count or percentage, then run the review. The
+objective preset is selected automatically. To compare another measure, open
+**Ranking options**, turn off **Use objective preset**, and select the measure.
+The concentration criterion is shown only for hazard-omission review.
 
 Similarity AD and raw ensemble SD can also rank the same queues. The workspace
 does not choose a winner using unknown outcomes, average these measures into a
@@ -150,6 +155,11 @@ Partially rejected chemicals retain an explicit rejected-case count.
 
 ## Results
 
+After a successful run, the workspace opens the review queue with selected
+chemicals shown first. Turn off **Selected only** to include the rest of the
+queue. Selecting a table row opens that chemical's record; the arrow buttons
+move through the full review order, and **Queue** returns to the filtered list.
+
 The queue displays the active ranking measure. For omission review, it also
 shows the predicted concentration relative to the criterion and the
 prediction/criterion ratio. The proximity score is the base-10 logarithm of
@@ -157,14 +167,16 @@ this ratio; smaller positive margins receive priority in the predicted-low-conce
 queue. Other ranking measures remain available in the expandable scores table.
 
 Each chemical's detail view includes its molecular structure, endpoint-specific
-concentrations, case results, and training neighbors. The endpoint chart uses
+concentrations, the follow-up question, the numerical ranking basis, case
+results, and training neighbors. The endpoint chart uses
 a logarithmic mg/L axis and shows the criterion only for omission review.
 An unrepresented endpoint is marked as having no eligible input case, not
 assigned a concentration. Nearest neighbors are training cases in the full
 normalized input space, not necessarily distinct chemicals or structural analogs.
 
 The selected-chemicals CSV contains the full selected queue, regardless of the
-on-screen search filter. A separate text summary records the completed task,
+on-screen search filter, including each chemical's follow-up question and
+ranking basis. A separate text summary records the completed task,
 ranking rule, quota, units, and reference/input identifiers. Changing the input
 or settings marks the previous results as outdated and disables result downloads
 until the review is rerun.

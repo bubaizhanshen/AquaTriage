@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from ecoood.review_presentation import (
-    endpoint_plot_table, review_queue_view, run_summary, summary_text,
+    chemical_review_details, endpoint_plot_table, review_queue_view, run_summary, summary_text,
 )
 from ecoood.review_workflow import export_csv
 
@@ -20,6 +20,7 @@ def completed_run(task="hazard_omission", rule="threshold_proximity"):
             "margin_log10": [0.2, 0.8], "block_knn": [0.7, 0.3],
             "similarity_ad": [0.4, 0.2], "ensemble_sd": [0.1, 0.05],
             "predicted_high_concern": [False, False],
+            "prediction_mg_l": [10**0.2, 10**0.8],
         }),
         endpoints=pd.DataFrame({
             "chemical_id": ["a", "b"],
@@ -58,6 +59,21 @@ def test_accuracy_view_has_no_criterion_interpretation():
     assert "criterion_position" not in view
     assert "criterion_ratio" not in view
     assert "Concentration criterion" not in run_summary(run).Setting.values
+    assert view.review_question.eq("How accurate is the predicted acute effect concentration?").all()
+    assert "criterion" not in view.iloc[0].priority_reason
+
+
+def test_omission_explanation_distinguishes_prediction_from_measurement():
+    run = completed_run()
+    details = chemical_review_details(run, "a")
+    assert "Could the measured" in details["question"]
+    assert "at or below 1 mg/L" in details["question"]
+    assert "1.58 mg/L is above" in details["reason"]
+    run.chemicals.loc[0, "predicted_high_concern"] = True
+    run.chemicals.loc[0, "prediction_mg_l"] = 0.5
+    details = chemical_review_details(run, "a")
+    assert "already high-concern prediction" in details["question"]
+    assert "after the predicted-low-concern queue" in details["reason"]
 
 
 def test_missing_endpoints_are_explicit_and_not_predicted():

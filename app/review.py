@@ -8,6 +8,7 @@ from pathlib import Path
 import io
 import sys
 import threading
+from functools import partial
 
 ROOT = Path(__file__).resolve().parents[1]
 WORK = Path(os.environ.get("AQUATRIAGE_WORK_DIR", ROOT / "tmp" / "platform"))
@@ -31,8 +32,8 @@ from ecoood.review_workflow import (
     template_csv,
 )
 from ecoood.review_presentation import (
-    CHECK_LABELS, ENDPOINT_LABELS, RULE_HELP, RULE_LABELS, SCORE_LABELS, TASK_LABELS,
-    endpoint_plot_table, review_queue_view, run_summary, summary_text,
+    CHECK_LABELS, ENDPOINT_LABELS, RULE_HELP, RULE_LABELS, SCORE_LABELS, TASK_HELP, TASK_LABELS,
+    chemical_review_details, endpoint_plot_table, review_queue_view, run_summary, summary_text,
 )
 
 
@@ -47,6 +48,13 @@ st.markdown("""
  [data-testid="stSidebar"] {background:#f3f5f6}
  button {border-radius:5px !important}
  @media (max-width:640px) {
+   .st-key-chemical_navigation [data-testid="stHorizontalBlock"] {flex-wrap:wrap !important}
+   .st-key-chemical_navigation [data-testid="stColumn"] {min-width:0 !important}
+   .st-key-chemical_navigation [data-testid="stColumn"]:nth-child(1) {flex:0 0 100% !important; width:100% !important}
+   .st-key-chemical_navigation [data-testid="stColumn"]:nth-child(2) {flex:1 1 0 !important; width:auto !important}
+   .st-key-chemical_navigation [data-testid="stColumn"]:nth-child(n+3) {flex:0 0 40px !important; width:40px !important}
+   .st-key-chemical_summary [data-testid="stColumn"]:first-child {order:2}
+   .st-key-chemical_summary [data-testid="stColumn"]:last-child {order:1}
    [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) {flex-wrap:wrap}
    [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > [data-testid="stColumn"] {
      flex:1 1 calc(50% - 1rem) !important; width:calc(50% - 1rem) !important;
@@ -85,6 +93,22 @@ st.title("AquaTriage")
 st.caption("Aquatic toxicity review")
 
 
+def show_tab(label):
+    st.session_state.review_tab = label
+
+
+def open_chemical(table_key, chemical_ids):
+    rows = st.session_state[table_key].selection.rows
+    if rows:
+        st.session_state.record_chemical = chemical_ids[rows[0]]
+        show_tab("Chemical record")
+
+
+def step_chemical(chemical_ids, step):
+    position = chemical_ids.index(st.session_state.record_chemical)
+    st.session_state.record_chemical = chemical_ids[position + step]
+
+
 def entered_cases(reference):
     records = st.session_state.setdefault("entered_cases", [])
     endpoint = st.selectbox("Endpoint", list(ENDPOINTS), format_func=ENDPOINT_LABELS.get,
@@ -94,12 +118,15 @@ def entered_cases(reference):
     ].unique()) if reference else []
     with st.form("case_entry", border=False):
         identity_col, name_col = st.columns(2)
-        chemical_id = identity_col.text_input("Chemical identifier", max_chars=128)
+        chemical_id = identity_col.text_input("Chemical identifier", max_chars=128,
+                                              help="A CAS number or your own stable substance ID. Repeated cases for this ID share one review place.")
         chemical_name = name_col.text_input("Chemical name (optional)", max_chars=300)
-        smiles = st.text_input("Confirmed SMILES", max_chars=5000)
+        smiles = st.text_input("Confirmed SMILES", max_chars=5000,
+                               help="SMILES is a text representation of a molecular structure. It must match the actual test substance, including its salt form.")
         species = st.selectbox(
             "Species", species_options, index=None, accept_new_options=True,
             placeholder="Scientific species name", key=f"entry_species_{endpoint}",
+            help="Use the scientific name, such as Pimephales promelas. Species absent from training are flagged in the results.",
         )
         duration = st.number_input(
             "Actual exposure duration (h)", min_value=0.0,
@@ -174,13 +201,17 @@ def check_table(frame):
 
 def endpoint_chart(run, chemical_id):
     data = endpoint_plot_table(run, chemical_id)
+    concentrations = data.prediction_mg_l.dropna().tolist()
+    if run.manifest["task"] == "hazard_omission":
+        concentrations.append(run.manifest["cutoff_mg_l"])
+    domain = [min(concentrations) / 2, max(concentrations) * 2]
     y = alt.Y("label:N", title=None, sort=list(ENDPOINT_LABELS.values()),
               axis=alt.Axis(labelLimit=180))
     points = alt.Chart(data[data.prediction_mg_l.notna()]).mark_point(
         filled=True, size=100, color="#127f83",
     ).encode(
         x=alt.X("prediction_mg_l:Q", title="Predicted concentration (mg/L)",
-                scale=alt.Scale(type="log", zero=False),
+                scale=alt.Scale(type="log", zero=False, domain=domain),
                 axis=alt.Axis(tickCount=5, format="~g", domain=True)),
         y=y,
         tooltip=[alt.Tooltip("label:N", title="Endpoint"),
@@ -188,8 +219,8 @@ def endpoint_chart(run, chemical_id):
                  alt.Tooltip("case_count:Q", title="Eligible cases", format=".0f")],
     )
     missing = alt.Chart(data[data.prediction_mg_l.isna()]).mark_text(
-        align="left", color="#666666", fontSize=12,
-    ).encode(x=alt.value(8), y=y, text="status:N")
+        align="right", color="#666666", fontSize=12,
+    ).encode(x=alt.value(alt.ExprRef(expr="width - 4")), y=y, text="status:N")
     chart = points + missing
     if run.manifest["task"] == "hazard_omission":
         criterion = pd.DataFrame({"criterion": [run.manifest["cutoff_mg_l"]]})
@@ -237,7 +268,7 @@ with st.sidebar:
                            "training_template.csv", "text/csv", icon=":material/download:", on_click="ignore")
         if training:
             training_hash = hashlib.sha256(training.getvalue()).hexdigest()
-            if st.button("Fit reference", icon=":material/model_training:", use_container_width=True):
+            if st.button("Fit reference", icon=":material/model_training:", width="stretch"):
                 try:
                     with st.spinner("Fitting five bootstrap models..."):
                         st.session_state.own_reference = fit_reference(read_input_csv(training.getvalue()))
@@ -266,8 +297,11 @@ with st.sidebar:
     if CLOUD:
         st.caption(f"Batch limit: {MAX_RECORDS:,} cases / {MAX_UPLOAD_MB} MB")
 
+if target_tab := st.session_state.pop("next_tab", None):
+    st.session_state.review_tab = target_tab
 setup, queue_tab, record_tab, checks_tab, detail_tab = st.tabs(
-    ["Review setup", "Review queue", "Chemical record", "Input checks", "Run details"]
+    ["Review setup", "Review queue", "Chemical record", "Input checks", "Run details"],
+    key="review_tab", on_change="rerun",
 )
 with setup:
     left, right = st.columns([1.45, 1], gap="large")
@@ -280,11 +314,11 @@ with setup:
             upload = st.file_uploader("Case table", type="csv", key="queue_file",
                                      max_upload_size=MAX_UPLOAD_MB,
                                      help="SMILES, chemical ID, species, endpoint, duration, and confirmed identity.")
-        template_col, full_col = st.columns(2)
-        template_col.download_button("Input template", template_csv(), "queue_template.csv", "text/csv",
-                                     icon=":material/download:", use_container_width=True, on_click="ignore")
-        full_col.download_button("All input columns", template_csv(full=True), "queue_full_template.csv", "text/csv",
-                                 icon=":material/download:", use_container_width=True, on_click="ignore")
+            template_col, full_col = st.columns(2)
+            template_col.download_button("Input template", template_csv(), "queue_template.csv", "text/csv",
+                                         icon=":material/download:", width="stretch", on_click="ignore")
+            full_col.download_button("All input columns", template_csv(full=True), "queue_full_template.csv", "text/csv",
+                                     icon=":material/download:", width="stretch", on_click="ignore")
         frame, validation = None, None
         eligible_count, ignored = 0, []
         try:
@@ -312,19 +346,27 @@ with setup:
             preview = frame[preview_cols].copy()
             if "endpoint" in preview:
                 preview["endpoint"] = preview.endpoint.replace(ENDPOINT_LABELS)
-            st.dataframe(preview, hide_index=True, width="stretch", height=330,
+            st.dataframe(preview, hide_index=True, width="stretch", height=230,
                          column_config={
                              "chemical_name": "Chemical", "chemical_id": "Identifier",
                              "species": "Species", "endpoint": "Endpoint", "duration_h": "Duration (h)",
                          })
     with right:
         st.subheader("Review objective")
-        objective = st.selectbox("Objective", ["Check concentration accuracy", "Recover hazard omissions"],
-                                  help="Accuracy: prioritize potentially inaccurate concentrations. Omissions: prioritize "
-                                       "predicted-low-concern chemicals whose toxicity may be underestimated.")
-        task = "general_error" if objective == "Check concentration accuracy" else "hazard_omission"
-        rule = st.selectbox("Ranking", RULES[task], format_func=RULE_LABELS.get,
-                            help="\n\n".join(RULE_HELP[value] for value in RULES[task]))
+        objective = st.selectbox("Objective", list(TASK_LABELS.values()),
+                                help="\n\n".join(TASK_HELP.values()))
+        task = next(key for key, label in TASK_LABELS.items() if label == objective)
+        with st.expander("Ranking options"):
+            use_preset = st.toggle("Use objective preset", value=True, key=f"preset_{task}",
+                                   help=RULE_HELP[RULES[task][0]])
+            if use_preset:
+                st.session_state[f"ranking_{task}"] = RULES[task][0]
+            rule = st.selectbox("Ranking", RULES[task], format_func=RULE_LABELS.get,
+                                key=f"ranking_{task}", disabled=use_preset,
+                                help="\n\n".join(RULE_HELP[value] for value in RULES[task]))
+        if use_preset:
+            rule = RULES[task][0]
+        st.caption(f"Ranking: {RULE_LABELS[rule]}")
         quota_mode = st.segmented_control("Review workload", ["Percentage", "Chemical count"], default="Percentage")
         fraction, count = None, None
         if quota_mode == "Percentage":
@@ -333,17 +375,21 @@ with setup:
             count = st.number_input("Chemicals to review", min_value=0, max_value=int(eligible_count),
                                     value=min(5, int(eligible_count)), step=1)
         planned_count = count if count is not None else round(fraction * eligible_count)
-        st.caption(f"Review allocation: {planned_count:,} of {eligible_count:,} eligible chemicals")
-        cutoff = st.number_input("Acute-effect concentration criterion (mg/L)", min_value=0.000001,
-                                  value=1.0, format="%.6g", disabled=task == "general_error",
-                                  help="1 mg/L is the study reference, not a complete regulatory hazard classification.")
+        st.metric("Chemicals to review", f"{planned_count:,} / {eligible_count:,}",
+                  help="Review places / all eligible chemical IDs. Rejected inputs do not consume review places.")
+        cutoff = 1.0
+        if task == "hazard_omission":
+            cutoff = st.number_input("Acute-effect concentration criterion (mg/L)", min_value=0.000001,
+                                     value=1.0, format="%.6g", key="concern_criterion",
+                                     help="At or below this concentration is predicted high concern. "
+                                          "1 mg/L is the study reference, not a complete regulatory hazard classification.")
         active_config = {
             "queue": hashlib.sha256(frame.to_csv(index=False).encode()).hexdigest() if frame is not None else None,
             "reference": reference.manifest["reference_sha256"] if reference else None,
             "task": task, "rule": rule, "fraction": fraction, "count": count, "cutoff": cutoff,
         }
         if st.button("Run review", type="primary", icon=":material/play_arrow:",
-                     use_container_width=True, disabled=frame is None or reference is None or eligible_count == 0):
+                     width="stretch", disabled=frame is None or reference is None or eligible_count == 0):
             guard = review_lock() if CLOUD else None
             if guard is not None and not guard.acquire(blocking=False):
                 st.warning("Another review is running. Please retry shortly.")
@@ -354,16 +400,21 @@ with setup:
                                             review_fraction=fraction, review_count=count, cutoff_mg_l=cutoff)
                     st.session_state.run = result
                     st.session_state.run_config = active_config
+                    st.session_state.run_number = st.session_state.get("run_number", 0) + 1
+                    st.session_state.pop("record_chemical", None)
+                    st.session_state.queue_search = ""
+                    st.session_state.queue_selected_only = result.manifest["review_count"] > 0
                     if result.manifest["eligible_chemicals"] == 0:
                         st.warning("All submitted cases were rejected.")
                     else:
-                        n = result.manifest["review_count"]
-                        st.success(f"{n} {'chemical' if n == 1 else 'chemicals'} selected")
+                        st.session_state.next_tab = "Review queue"
                 except (ValueError, RuntimeError) as exc:
                     st.error(str(exc))
                 finally:
                     if guard is not None:
                         guard.release()
+                if st.session_state.get("next_tab"):
+                    st.rerun()
 
 run = st.session_state.get("run")
 stale = run is not None and st.session_state.get("run_config") != active_config
@@ -388,7 +439,8 @@ with queue_tab:
         complete_col.download_button("Download complete results", export_run(run), "aquatriage_review.zip",
                                     "application/zip", icon=":material/download:", disabled=stale, on_click="ignore")
         export_columns = ["rank", "chemical_id", "chemical_name", "prediction_mg_l", "represented_endpoints",
-                          "review_score", "review_measure", "ranking_rule", "review_reason"]
+                          "review_score", "review_measure", "ranking_rule", "review_reason",
+                          "review_question", "priority_reason"]
         if omission:
             export_columns += ["concentration_criterion_mg_l", "criterion_position", "criterion_ratio"]
         selected_view = view.loc[view.selected_for_review] if not view.empty else view
@@ -399,25 +451,36 @@ with queue_tab:
             disabled=stale, on_click="ignore",
         )
         if not run.chemicals.empty:
-            search = st.text_input("Find a chemical", placeholder="Name or identifier")
-            selected_only = st.toggle("Selected only")
+            search = st.text_input("Find a chemical", placeholder="Name or identifier", key="queue_search")
+            selected_only = st.toggle("Selected only", key="queue_selected_only")
             shown = view.copy()
             if selected_only:
                 shown = shown[shown.selected_for_review]
             if search:
                 shown = shown[shown.chemical_name.str.contains(search, case=False, regex=False) |
                               shown.chemical_id.str.contains(search, case=False, regex=False)]
-            cols = ["rank", "selected_for_review", "chemical_name", "review_score", "prediction_mg_l"]
+            shown["review_status"] = shown.selected_for_review.map({True: "Selected", False: "Not selected"})
+            cols = ["rank", "chemical_name", "chemical_id", "prediction_mg_l", "review_score"]
             if omission:
-                cols += ["criterion_position", "criterion_ratio"]
-            cols += ["represented_endpoints", "chemical_id", "review_reason"]
-            st.dataframe(shown[cols], hide_index=True, width="stretch", height=480,
+                cols += ["criterion_position"]
+            if not selected_only:
+                cols += ["review_status"]
+            table_key = "queue_table_" + hashlib.sha256(
+                f"{st.session_state.get('run_number', 0)}:{search}:{selected_only}".encode()
+            ).hexdigest()[:16]
+            if shown.empty:
+                st.info("No chemicals match this filter.")
+            st.dataframe(shown[cols], hide_index=True, width="stretch", height=min(480, 36 * len(shown) + 42),
+                         key=table_key, selection_mode="single-row",
+                         on_select=partial(open_chemical, table_key, shown.chemical_id.tolist()),
                          column_config={
                              "prediction_mg_l": st.column_config.NumberColumn(
                                  "Prediction (mg/L)", format="%.4g",
                                  help="Lowest of the within-endpoint median predictions; unrepresented endpoints are not predicted."),
-                             "selected_for_review": st.column_config.CheckboxColumn("Review"),
-                             "rank": "Rank", "chemical_name": "Chemical", "chemical_id": "Identifier",
+                             "review_status": "Review status",
+                             "rank": st.column_config.NumberColumn("Rank", width="small"),
+                             "chemical_name": st.column_config.TextColumn("Chemical", width="medium"),
+                             "chemical_id": "Identifier",
                              "represented_endpoints": "Represented endpoints",
                              "review_score": st.column_config.NumberColumn(
                                  SCORE_LABELS[completed_rule], format="%.4g", help=RULE_HELP[completed_rule]),
@@ -429,9 +492,11 @@ with queue_tab:
                                       "The proximity rule uses its base-10 logarithm."),
                          })
             with st.expander("All ranking measures"):
-                st.dataframe(shown[["chemical_name", "block_knn", "similarity_ad", "ensemble_sd"]],
+                st.dataframe(shown[["chemical_name", "chemical_id", "represented_endpoints",
+                                    "block_knn", "similarity_ad", "ensemble_sd"]],
                              hide_index=True, width="stretch", column_config={
                                  "chemical_name": "Chemical",
+                                 "chemical_id": "Identifier", "represented_endpoints": "Represented endpoints",
                                  **{key: st.column_config.NumberColumn(SCORE_LABELS[key], format="%.4g", help=RULE_HELP[key])
                                     for key in ("block_knn", "similarity_ad", "ensemble_sd")},
                              })
@@ -439,9 +504,23 @@ with record_tab:
     if run is not None and not run.chemicals.empty:
         ids = run.chemicals.chemical_id.tolist()
         names = run.chemicals.set_index("chemical_id").chemical_name.to_dict()
-        identity = st.selectbox("Chemical", ids, format_func=lambda key: f"{names[key]} · {key}")
+        if st.session_state.get("record_chemical") not in ids:
+            st.session_state.record_chemical = ids[0]
+        navigation = st.container(key="chemical_navigation")
+        back, choose, previous, following = navigation.columns([1.3, 4, 0.5, 0.5], vertical_alignment="bottom")
+        back.button("Queue", icon=":material/arrow_back:", on_click=show_tab, args=("Review queue",))
+        identity = choose.selectbox("Chemical", ids, key="record_chemical",
+                                    format_func=lambda key: f"{names[key]} · {key}")
+        previous.button("", icon=":material/chevron_left:", key="previous_chemical",
+                        help="Previous chemical in review order", disabled=identity == ids[0],
+                        on_click=step_chemical, args=(ids, -1))
+        following.button("", icon=":material/chevron_right:", key="next_chemical",
+                         help="Next chemical in review order", disabled=identity == ids[-1],
+                         on_click=step_chemical, args=(ids, 1))
         chem = run.chemicals.set_index("chemical_id").loc[identity]
-        mol_col, data_col = st.columns([1, 2], gap="large")
+        explanation = chemical_review_details(run, identity)
+        summary = st.container(key="chemical_summary")
+        mol_col, data_col = summary.columns([1, 2], gap="large")
         with mol_col:
             st.image(molecule_image(chem.smiles), width="stretch")
             with st.expander("SMILES"):
@@ -452,7 +531,8 @@ with record_tab:
             st.caption(f"Rank {int(chem['rank'])} of {run.manifest['eligible_chemicals']} · "
                        f"{run.manifest['review_count']} review "
                        f"{'place' if run.manifest['review_count'] == 1 else 'places'}")
-            st.caption(chem.selection_basis)
+            st.write(explanation["question"])
+            st.caption(explanation["reason"])
             actual_rule = run.manifest["rule"]
             actual_score = chem.margin_log10 if actual_rule == "threshold_proximity" else chem[actual_rule]
             st.metric(SCORE_LABELS[actual_rule], f"{actual_score:.4g}", help=RULE_HELP[actual_rule])
@@ -475,7 +555,7 @@ with record_tab:
                 **{key: st.column_config.NumberColumn(SCORE_LABELS[key], format="%.4g", help=RULE_HELP[key])
                    for key in ("block_knn", "similarity_ad", "ensemble_sd")},
             })
-        st.subheader("Case predictions and training neighbors")
+        st.subheader("Individual case predictions")
         subset = run.cases[run.cases.chemical_id.eq(identity)]
         case_numbers = {case: i + 1 for i, case in enumerate(subset.case_id)}
         case_view = subset[["case_id", "species", "endpoint", "duration_h", "prediction_mg_l",
@@ -493,11 +573,12 @@ with record_tab:
         ].copy()
         neighbor_view["case_id"] = neighbor_view.case_id.map(case_numbers)
         neighbor_view["reference_endpoint"] = neighbor_view.reference_endpoint.replace(ENDPOINT_LABELS)
-        st.dataframe(neighbor_view, hide_index=True, width="stretch", column_config={
-            "case_id": "Case", "neighbor_rank": "Neighbor", "reference_chemical_name": "Training chemical",
-            "reference_species": "Training species", "reference_endpoint": "Training endpoint",
-            "distance": st.column_config.NumberColumn("Distance", format="%.3f"),
-        })
+        with st.expander("Nearest training cases"):
+            st.dataframe(neighbor_view, hide_index=True, width="stretch", column_config={
+                "case_id": "Case", "neighbor_rank": "Neighbor", "reference_chemical_name": "Training chemical",
+                "reference_species": "Training species", "reference_endpoint": "Training endpoint",
+                "distance": st.column_config.NumberColumn("Distance", format="%.3f"),
+            })
     else:
         st.info("No predicted chemical records.")
 with checks_tab:

@@ -57,11 +57,13 @@ def test_cloud_is_inference_only_and_loads_published_reference(cloud):
     assert result.manifest["eligible_chemicals"] == 12
     assert result.manifest["review_count"] == 3
     assert result.manifest["rule"] == "block_knn"
+    assert cloud.session_state["review_tab"] == "Review queue"
+    assert cloud.session_state["queue_selected_only"] is True
 
 
 def test_cloud_objective_switch_and_quota_endpoints(cloud):
     next(s for s in cloud.selectbox if s.label == "Objective").select(
-        "Recover hazard omissions",
+        "Find potentially missed hazards",
     ).run()
     slider = next(s for s in cloud.slider if s.label == "Eligible chemicals to review (%)")
     slider.set_value(0).run()
@@ -109,7 +111,7 @@ def test_manual_entry_validation_and_count_quota(cloud):
 
 def test_changed_settings_do_not_relabel_completed_run(cloud):
     run_button(cloud).click().run()
-    next(s for s in cloud.selectbox if s.label == "Objective").select("Recover hazard omissions").run()
+    next(s for s in cloud.selectbox if s.label == "Objective").select("Find potentially missed hazards").run()
     assert not cloud.exception
     assert cloud.session_state["run"].manifest["task"] == "general_error"
     assert any("previous run" in w.value for w in cloud.warning)
@@ -117,4 +119,36 @@ def test_changed_settings_do_not_relabel_completed_run(cloud):
         table.value for table in cloud.dataframe
         if list(table.value.columns) == ["Setting", "Value"]
     )
-    assert summary.set_index("Setting").loc["Review objective", "Value"] == "Check concentration accuracy"
+    assert summary.set_index("Setting").loc["Review objective", "Value"] == "Check prediction accuracy"
+
+
+def test_preset_and_custom_ranking_are_explicit(cloud):
+    ranking = next(s for s in cloud.selectbox if s.label == "Ranking")
+    assert ranking.disabled
+    assert ranking.value == "block_knn"
+    next(t for t in cloud.toggle if t.label == "Use objective preset").set_value(False).run()
+    next(s for s in cloud.selectbox if s.label == "Ranking").select("ensemble_sd").run()
+    run_button(cloud).click().run()
+    assert not cloud.exception
+    assert cloud.session_state["run"].manifest["rule"] == "ensemble_sd"
+    next(t for t in cloud.toggle if t.label == "Use objective preset").set_value(True).run()
+    ranking = next(s for s in cloud.selectbox if s.label == "Ranking")
+    assert ranking.disabled
+    assert ranking.value == "block_knn"
+    assert any("previous run" in w.value for w in cloud.warning)
+    run_button(cloud).click().run()
+    assert cloud.session_state["run"].manifest["rule"] == "block_knn"
+
+
+def test_chemical_navigation_preserves_review_order(cloud):
+    run_button(cloud).click().run()
+    ids = cloud.session_state["run"].chemicals.chemical_id.tolist()
+    assert cloud.session_state["record_chemical"] == ids[0]
+    assert cloud.button(key="previous_chemical").disabled
+    cloud.button(key="next_chemical").click().run()
+    assert not cloud.exception
+    assert cloud.session_state["record_chemical"] == ids[1]
+    cloud.button(key="previous_chemical").click().run()
+    assert cloud.session_state["record_chemical"] == ids[0]
+    next(b for b in cloud.button if b.label == "Queue").click().run()
+    assert cloud.session_state["review_tab"] == "Review queue"
